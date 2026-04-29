@@ -1,0 +1,291 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --background: 222 47% 97%;
+    --foreground: 224 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 30% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 30% 12%;
+
+    --primary: 234 85% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 250 80% 65%;
+
+    --secondary: 222 20% 93%;
+    --secondary-foreground: 224 20% 25%;
+
+    --muted: 222 20% 95%;
+    --muted-foreground: 222 12% 50%;
+
+    --accent: 160 70% 40%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 80% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 20% 90%;
+    --input: 222 20% 90%;
+    --ring: 234 85% 55%;
+
+    --radius: 0.875rem;
+
+    --warning: 38 95% 50%;
+    --warning-foreground: 0 0% 100%;
+    --success: 160 70% 40%;
+    --success-foreground: 0 0% 100%;
+    --info: 234 85% 55%;
+    --info-foreground: 0 0% 100%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(234 85% 55%), hsl(250 80% 65%));
+    --gradient-subtle: linear-gradient(135deg, hsl(234 85% 55% / 0.08), hsl(250 80% 65% / 0.04));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(222 47% 98%));
+    --gradient-success: linear-gradient(135deg, hsl(160 70% 40%), hsl(160 60% 50%));
+    --shadow-card: 0 1px 3px hsl(224 30% 12% / 0.04), 0 4px 12px hsl(224 30% 12% / 0.03);
+    --shadow-card-hover: 0 4px 16px hsl(224 30% 12% / 0.08), 0 8px 32px hsl(224 30% 12% / 0.04);
+    --shadow-primary: 0 4px 16px hsl(234 85% 55% / 0.25), 0 8px 32px hsl(234 85% 55% / 0.15);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 224 30% 6%;
+    --foreground: 222 15% 95%;
+    --card: 224 28% 10%;
+    --card-foreground: 222 15% 95%;
+    --popover: 224 28% 10%;
+    --popover-foreground: 222 15% 95%;
+    --primary: 234 80% 62%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 250 75% 72%;
+    --secondary: 224 25% 16%;
+    --secondary-foreground: 222 15% 90%;
+    --muted: 224 25% 15%;
+    --muted-foreground: 222 12% 55%;
+    --accent: 160 65% 48%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 224 22% 18%;
+    --input: 224 22% 18%;
+    --ring: 234 80% 62%;
+    --gradient-primary: linear-gradient(135deg, hsl(234 80% 62%), hsl(250 75% 72%));
+    --gradient-subtle: linear-gradient(135deg, hsl(234 80% 62% / 0.12), hsl(250 75% 72% / 0.06));
+    --gradient-card: linear-gradient(180deg, hsl(224 28% 10%), hsl(224 28% 9%));
+    --gradient-success: linear-gradient(135deg, hsl(160 65% 48%), hsl(160 55% 58%));
+    --shadow-card: 0 1px 3px hsl(0 0% 0% / 0.2), 0 4px 12px hsl(0 0% 0% / 0.15);
+    --shadow-card-hover: 0 4px 16px hsl(0 0% 0% / 0.3), 0 8px 32px hsl(0 0% 0% / 0.2);
+    --shadow-primary: 0 4px 16px hsl(234 80% 62% / 0.3), 0 8px 32px hsl(234 80% 62% / 0.2);
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer components {
+  .section-card {
+    @apply bg-card rounded-2xl border border-border/60 p-6 md:p-8 transition-all duration-500 relative overflow-hidden;
+    background: var(--gradient-card);
+    box-shadow: var(--shadow-card);
+  }
+
+  .section-card::before {
+    content: '';
+    @apply absolute top-0 left-0 right-0 h-1 opacity-0 transition-opacity duration-500;
+    background: var(--gradient-primary);
+  }
+
+  .section-card:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+
+  .section-card:hover::before {
+    opacity: 1;
+  }
+
+  .section-title {
+    @apply text-base font-display font-bold text-foreground flex items-center gap-2.5 mb-6 uppercase tracking-wide;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+  }
+
+  .section-title-icon {
+    @apply h-9 w-9 rounded-xl flex items-center justify-center transition-transform duration-300;
+    background: var(--gradient-primary);
+    box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
+  }
+
+  .section-card:hover .section-title-icon {
+    transform: scale(1.1) rotate(-3deg);
+  }
+
+  .field-label {
+    @apply text-xs font-semibold text-muted-foreground mb-2 block uppercase tracking-wider;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+  }
+
+  .status-badge-done {
+    @apply text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-300;
+    background: hsl(var(--success) / 0.12);
+    color: hsl(var(--success));
+  }
+
+  .status-badge-done:hover {
+    background: hsl(var(--success) / 0.2);
+    transform: scale(1.05);
+  }
+
+  .status-badge-pending {
+    @apply text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-300;
+    background: hsl(var(--warning) / 0.12);
+    color: hsl(var(--warning));
+  }
+
+  .status-badge-pending:hover {
+    background: hsl(var(--warning) / 0.2);
+    transform: scale(1.05);
+  }
+
+  .status-badge-na {
+    @apply text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-300;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+
+  .glass-header {
+    @apply sticky top-0 z-50 border-b border-border/30;
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+  }
+
+  .btn-primary-gradient {
+    background: var(--gradient-primary);
+    box-shadow: var(--shadow-primary);
+    @apply text-primary-foreground font-semibold transition-all duration-300;
+  }
+
+  .btn-primary-gradient:hover {
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 8px 24px hsl(var(--primary) / 0.4), 0 16px 48px hsl(var(--primary) / 0.2);
+  }
+
+  .btn-primary-gradient:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  /* Floating orb background decoration */
+  .floating-orb {
+    @apply absolute rounded-full pointer-events-none;
+    filter: blur(80px);
+    animation: float-orb 20s ease-in-out infinite;
+  }
+
+  /* Shimmer effect for loading or emphasis */
+  .shimmer-line {
+    @apply relative overflow-hidden;
+  }
+
+  .shimmer-line::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent 0%, hsl(var(--primary) / 0.06) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 3s linear infinite;
+  }
+
+  /* Enhanced table row hover */
+  .table-row-interactive {
+    @apply border-t border-border/40 transition-all duration-200 cursor-default;
+  }
+
+  .table-row-interactive:hover {
+    @apply bg-primary/[0.04];
+    transform: scale(1.002);
+  }
+
+  /* Pulse ring for interactive elements */
+  .pulse-ring {
+    @apply relative;
+  }
+
+  .pulse-ring::after {
+    content: '';
+    @apply absolute inset-0 rounded-full;
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4);
+    animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Cost row highlight */
+  .cost-row {
+    @apply flex justify-between items-center py-3.5 px-3 rounded-xl transition-all duration-200;
+  }
+
+  .cost-row:hover {
+    @apply bg-muted/40;
+  }
+
+  /* Empty state styling */
+  .empty-state {
+    @apply text-center py-12 rounded-2xl border-2 border-dashed border-border/40 transition-all duration-300;
+    background: linear-gradient(135deg, hsl(var(--muted) / 0.3), hsl(var(--muted) / 0.1));
+  }
+
+  .empty-state:hover {
+    @apply border-primary/20;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.04), hsl(var(--primary) / 0.02));
+  }
+}
+
+@keyframes float-orb {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -40px) scale(1.1); }
+  50% { transform: translate(-20px, 20px) scale(0.95); }
+  75% { transform: translate(40px, 10px) scale(1.05); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.4); }
+  70% { box-shadow: 0 0 0 10px hsl(var(--primary) / 0); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+}
