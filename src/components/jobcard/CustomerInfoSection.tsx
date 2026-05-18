@@ -38,6 +38,7 @@ const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange 
   const fields = [
     { label: "Customer Name *", field: "customerName", placeholder: "Enter customer name" },
     { label: "Ref No.", field: "refNo", placeholder: "XXXXXXX" },
+    { label: "Equipment Name", field: "equipmentName", placeholder: "Enter equipment name" },
     { label: "Job Card No. *", field: "jobCardNo", placeholder: "05", icon: Hash },
     { label: "Date *", field: "date", inputType: "date", icon: Calendar },
     { label: "Purpose of Visit *", type: "serviceType" },

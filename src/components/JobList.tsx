@@ -1,56 +1,52 @@
 import { useEffect, useState } from "react";
-import JobCardForm from "./jobcard/JobCardForm";
+import { useNavigate } from "react-router-dom";
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
+import { API_BASE_URL, getDevAuthHeaders } from "@/lib/api";
 
-const JobList = () => {
+interface JobListProps {
+  role: "engineer" | "manager" | "admin";
+}
+
+const JobList = ({ role }: JobListProps) => {
     const [jobs, setJobs] = useState<any[]>([]);
-    const [viewJobId, setViewJobId] = useState<number | null>(null);
+    const navigate = useNavigate();
 
     // Fetch jobs from backend
     const fetchJobs = async () => {
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
-            const res = await fetch("http://localhost:5000/jobs?ts=" + new Date().getTime(), { signal: controller.signal });
-            clearTimeout(timeoutId);
+            const res = await fetch(`${API_BASE_URL}/jobs`, {
+              headers: {
+                "Content-Type": "application/json",
+                ...getDevAuthHeaders(role),
+              },
+            });
             if (!res.ok) throw new Error("Backend connection failed");
             const data = await res.json();
             setJobs(Array.isArray(data.data) ? data.data : []);
         } catch (err) {
-            console.error("Backend fetch failed, using local mock data.");
-            const localJobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-            setJobs(localJobs);
+            console.error("Failed to fetch jobs:", err);
+            setJobs([]);
         }
     };
 
     // Update job status (Approve / Reject)
     const updateStatus = async (id: number, status: string) => {
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-            const res = await fetch(`http://localhost:5000/jobs/${id}/status`, {
+            const res = await fetch(`${API_BASE_URL}/jobs/${id}/status`, {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
+                    ...getDevAuthHeaders(role),
                 },
                 body: JSON.stringify({ status }),
-                signal: controller.signal
             });
-            clearTimeout(timeoutId);
-            
+
             if (!res.ok) throw new Error("Backend connection failed");
 
             fetchJobs();
-
         } catch (error) {
-            console.error("Using local mock update logic.");
-            const localJobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-            const updatedJobs = localJobs.map((j: any) => String(j.id) === String(id) ? { ...j, status } : j);
-            localStorage.setItem('mockJobs', JSON.stringify(updatedJobs));
-            fetchJobs();
-            const event = new Event('jobsUpdated');
-            window.dispatchEvent(event);
+            console.error("Failed to update job status:", error);
         }
     };
 
@@ -62,42 +58,18 @@ const JobList = () => {
             fetchJobs();
         }, 5000);
 
-        const listener = () => fetchJobs();
-        window.addEventListener('jobsUpdated', listener);
-
         return () => {
             clearInterval(interval);
-            window.removeEventListener('jobsUpdated', listener);
         };
     }, []);
 
     if (!Array.isArray(jobs)) {
-        return <p>Loading...</p>;
+        return <p>No data</p>;
     }
 
     return (
         <div style={{ padding: "20px" }}>
-            {viewJobId ? (
-                <div>
-                    <button 
-                        onClick={() => setViewJobId(null)}
-                        style={{
-                            marginBottom: "20px", 
-                            padding: "8px 16px",
-                            background: "#333",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "4px",
-                            cursor: "pointer"
-                        }}
-                    >
-                        &larr; Back to Job List
-                    </button>
-                    <JobCardForm role="manager" jobId={viewJobId} />
-                </div>
-            ) : (
-                <>
-                    <h2>Saved Jobs</h2>
+            <h2>Saved Jobs</h2>
 
             {jobs.length === 0 ? (
                 <p>No jobs found</p>
@@ -126,24 +98,24 @@ const JobList = () => {
 
                     <tbody>
                         {jobs.map((job) => (
-                            <tr key={job.id}>
+                            <tr key={job?.id ?? Math.random()}>
                                 <td style={{ borderBottom: "1px solid #eee", padding: "10px" }}>
-                                    {job.id}
+                                    {job?.id ?? "—"}
                                 </td>
-                                <td>{job.job_card_no || "—"}</td>
-                                <td>{job.customer_name}</td>
-                                <td>{job.equipment_name}</td>
-                                <td>{job.job_date || "—"}</td>
-                                <td>{job.sales_area || "—"}</td>
-                                <td>{job.service_type || "—"}</td>
-                                <td>{job.status}</td>
+                                <td>{job?.job_card_no ?? "—"}</td>
+                                <td>{job?.customer_name ?? "—"}</td>
+                                <td>{job?.equipment_name ?? "—"}</td>
+                                <td>{job?.job_date ?? "—"}</td>
+                                <td>{job?.sales_area ?? "—"}</td>
+                                <td>{job?.service_type ?? "—"}</td>
+                                <td>{job?.status ?? "—"}</td>
                                 <td>
-                                    {job.grand_total ? `AED ${job.grand_total}` : "N/A"}
+                                    {job?.grand_total ? `AED ${job.grand_total}` : "N/A"}
                                 </td>
 
                                 <td>
                                     <button
-                                        onClick={() => setViewJobId(job.id)}
+                                        onClick={() => navigate(`/edit-job/${job?.id}`)}
                                         style={{
                                             marginRight: "5px",
                                             background: "blue",
@@ -156,10 +128,10 @@ const JobList = () => {
                                         Edit / Price
                                     </button>
 
-                                    {job.status !== "APPROVED" && (
+                                    {role === "manager" && job?.status !== "APPROVED" && (
                                     <>
                                         <button
-                                            onClick={() => updateStatus(job.id, "APPROVED")}
+                                            onClick={() => updateStatus(job?.id, "APPROVED")}
                                             style={{
                                                 marginRight: "5px",
                                                 background: "green",
@@ -173,7 +145,7 @@ const JobList = () => {
                                         </button>
 
                                         <button
-                                            onClick={() => updateStatus(job.id, "REJECTED")}
+                                            onClick={() => updateStatus(job?.id, "REJECTED")}
                                             style={{
                                                 marginRight: "5px",
                                                 background: "red",
@@ -188,7 +160,7 @@ const JobList = () => {
                                     </>
                                     )}
 
-                                    {job.status === "APPROVED" && (
+                                    {job?.status === "APPROVED" && (
                                     <>
                                         <button
                                             onClick={() => generatePDF(job)}
@@ -223,8 +195,6 @@ const JobList = () => {
                         ))}
                     </tbody>
                 </table>
-            )}
-            </>
             )}
         </div>
     );

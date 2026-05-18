@@ -1,8 +1,26 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { API_BASE_URL, getDevAuthHeaders } from "@/lib/api";
+
+// Safe error message extraction
+function getErrorMessage(err: any): string {
+  if (!err) return "Something went wrong";
+  if (typeof err === "string") return err;
+  if (err?.response?.data?.message) return String(err.response.data.message);
+  if (err?.response?.data?.error?.message) return String(err.response.data.error.message);
+  if (err?.response?.data?.error?.code) return String(err.response.data.error.code);
+  if (err?.message) return String(err.message);
+  if (err?.error) return getErrorMessage(err.error);
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return "Something went wrong";
+  }
+}
 import CustomerInfoSection from "./CustomerInfoSection";
 import ChecklistSection from "./ChecklistSection";
 import PartsLaborSection from "./PartsLaborSection";
@@ -13,7 +31,7 @@ import { generateExcel } from "@/utils/exportExcel";
 import type { JobCardData, CustomerInfo, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
 
 const initialCustomer: CustomerInfo = {
-  customerName: "", refNo: "", jobCardNo: "", date: new Date().toISOString().split("T")[0],
+  customerName: "", refNo: "", equipmentName: "", jobCardNo: "", date: new Date().toISOString().split("T")[0],
   customerCode: "", attentionOf: "", email: "", contactNo: "", salesArea: "", underWarranty: false,
 };
 
@@ -31,6 +49,8 @@ interface JobCardFormProps {
 }
 
 const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
+  const params = useParams();
+  const routeJobId = params.id ? Number(params.id) : undefined;
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>(initialCustomer);
   const [serviceType, setServiceType] = useState<ServiceType>("service_contract");
   const [compressorChecklist, setCompressorChecklist] = useState<ChecklistItem[]>(defaultCompressorChecklist);
@@ -41,28 +61,89 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
   const [discountPercentage, setDiscountPercentage] = useState(0);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
+  const currentJobId = jobId ?? routeJobId;
 
   // Load existing job data if editing
-  useMemo(() => {
-    if (jobId) {
+  useEffect(() => {
+    if (!currentJobId) return;
+
+    const fetchJob = async () => {
       try {
-        const jobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-        const existingJob = jobs.find((j: any) => String(j.id) === String(jobId));
-        if (existingJob) {
-          if (existingJob.customerInfo) setCustomerInfo(existingJob.customerInfo);
-          else setCustomerInfo(prev => ({ ...prev, customerName: existingJob.customer_name || "" }));
-          
-          if (existingJob.parts) setParts(existingJob.parts);
-          if (existingJob.labor) setLabor(existingJob.labor);
-          if (existingJob.compressorChecklist) setCompressorChecklist(existingJob.compressorChecklist);
-          if (existingJob.dryerChecklist) setDryerChecklist(existingJob.dryerChecklist);
-          if (existingJob.status === "APPROVED") setIsApproved(true);
+        const res = await fetch(`${API_BASE_URL}/jobs/${currentJobId}`, {
+          headers: {
+            "Content-Type": "application/json",
+            ...getDevAuthHeaders(role),
+          },
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          const errorMsg = getErrorMessage(data.error) || "Failed to fetch job";
+          if (data.error?.details) {
+            console.error("Fetch job error details:", data.error.details);
+          }
+          throw new Error(errorMsg);
         }
-      } catch (e) {
-        console.error("Failed to load mock job", e);
+
+        // Populate form fields from job data
+        const job = data.data.job;
+        setCustomerInfo({
+          customerName: job.customer_name || "",
+          refNo: job.ref_no || "",
+          equipmentName: job.equipment_name || "",
+          jobCardNo: job.job_card_no || "",
+          date: job.job_date || "",
+          customerCode: job.customer_code || "",
+          attentionOf: job.attention_of || "",
+          email: job.email || "",
+          contactNo: job.contact_no || "",
+          salesArea: job.sales_area || "",
+          underWarranty: job.under_warranty || false,
+        });
+
+        setServiceType((job.service_type as ServiceType) || "service_contract");
+        setOtherExpenses(job.job_data?.other_expenses ?? 0);
+        setDiscountPercentage(job.job_data?.discount_percentage ?? 0);
+        setCompressorChecklist(job.job_data?.compressor_checklist ?? defaultCompressorChecklist);
+        setDryerChecklist(job.job_data?.dryer_checklist ?? defaultDryerChecklist);
+
+        setParts(
+          Array.isArray(data.data.parts)
+            ? data.data.parts.map((part: any) => ({
+                id: String(part.id ?? part.part_name ?? Math.random()),
+                description: part.part_name || part.description || "",
+                qty: part.quantity ?? part.qty ?? 0,
+                unitPrice: part.unit_price ?? part.unitPrice ?? 0,
+                totalPrice: part.total ?? part.totalPrice ?? 0,
+              }))
+            : []
+        );
+        setLabor(
+          Array.isArray(data.data.labor)
+            ? data.data.labor.map((laborItem: any) => ({
+                id: String(laborItem.id ?? laborItem.description ?? Math.random()),
+                description: laborItem.description || "",
+                hours: laborItem.hours ?? 0,
+                ratePerHour: laborItem.rate ?? laborItem.ratePerHour ?? 0,
+                totalCost: laborItem.total ?? laborItem.totalCost ?? 0,
+              }))
+            : []
+        );
+
+        // Set approval status
+        if (job.status === "APPROVED" || job.status === "CLOSED") {
+          setIsApproved(true);
+        }
+
+      } catch (error) {
+        const errorMsg = getErrorMessage(error);
+        console.error("Failed to load job for editing:", error, "Details:", errorMsg);
+        toast.error(errorMsg);
       }
-    }
-  }, [jobId]);
+    };
+
+    fetchJob();
+  }, [currentJobId]);
 
   // Track overall progress
   const totalChecklist = compressorChecklist.length + dryerChecklist.length;
@@ -85,6 +166,7 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
 
   const validate = (): boolean => {
     if (!customerInfo.customerName) { toast.error("Please select a customer"); return false; }
+    if (!customerInfo.equipmentName) { toast.error("Please enter an equipment name"); return false; }
     if (!customerInfo.jobCardNo) { toast.error("Please enter a job card number"); return false; }
     if (!customerInfo.date) { toast.error("Please select a date"); return false; }
     return true;
@@ -114,12 +196,12 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
 
     // CALCULATE PRICING
     const partsTotal = parts.reduce(
-      (sum, item) => sum + (item.quantity || 0) * (item.unitPrice || 0),
+      (sum, item) => sum + (item.qty || 0) * (item.unitPrice || 0),
       0
     );
 
     const labourTotal = labor.reduce(
-      (sum, item) => sum + (item.hours || 0) * (item.rate || 0),
+      (sum, item) => sum + (item.hours || 0) * (item.ratePerHour || 0),
       0
     );
 
@@ -134,49 +216,74 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
 
     const grandTotal = taxableAmount + vatAmount;
 
+    const jobData = {
+      customer_name: customerInfo.customerName,
+      equipment_name: customerInfo.equipmentName,
+      job_card_no: customerInfo.jobCardNo,
+      job_date: customerInfo.date,
+      ref_no: customerInfo.refNo,
+      customer_code: customerInfo.customerCode,
+      attention_of: customerInfo.attentionOf,
+      email: customerInfo.email,
+      contact_no: customerInfo.contactNo,
+      sales_area: customerInfo.salesArea,
+      service_type: serviceType,
+      under_warranty: customerInfo.underWarranty,
+      other_expenses: otherExpenses,
+      discount_percentage: discountPercentage,
+      parts,
+      labor,
+      job_data: {
+        compressor_checklist: compressorChecklist,
+        dryer_checklist: dryerChecklist,
+        other_expenses: otherExpenses,
+        discount_percentage: discountPercentage,
+      },
+    };
+
+    console.log("FINAL PAYLOAD:", jobData);
+
     try {
-      // SAVE JOB
-      const response = await fetch("http://localhost:5000/jobs", {
-        method: "POST",
+      const method = currentJobId ? "PUT" : "POST";
+      const url = currentJobId ? `${API_BASE_URL}/jobs/${currentJobId}` : `${API_BASE_URL}/jobs`;
+
+      const response = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
+          ...getDevAuthHeaders(role),
         },
-        body: JSON.stringify({
-          // Customer Info (flat columns)
-          customer_name: customerInfo.customerName,
-          ref_no: customerInfo.refNo,
-          job_card_no: customerInfo.jobCardNo,
-          job_date: customerInfo.date,
-          customer_code: customerInfo.customerCode,
-          attention_of: customerInfo.attentionOf,
-          email: customerInfo.email,
-          contact_no: customerInfo.contactNo,
-          sales_area: customerInfo.salesArea,
-          under_warranty: customerInfo.underWarranty,
-          // Job Info
-          equipment_name: "Compressor",
-          service_type: serviceType,
-          other_expenses: otherExpenses,
-          discount_percentage: discountPercentage,
-          // Nested arrays stored in job_data JSONB
-          parts,
-          labor,
-          compressor_checklist: compressorChecklist,
-          dryer_checklist: dryerChecklist,
-        }),
+        body: JSON.stringify(jobData),
       });
 
-      if (!response.ok) throw new Error("Backend response failed");
-      
-      const job = await response.json();
+      const data = await response.json();
 
-      console.log("Saved Job:", job);
+      if (!response.ok) {
+        const errorMsg = getErrorMessage(data.error) || "Failed to save job";
+        if (data.error?.details) {
+          console.error("Save job error details:", data.error.details);
+        }
+        console.error("Save job failed with response:", data);
+        toast.error(errorMsg);
+        return;
+      }
 
-      // SAVE PRICING
-      await fetch(`http://localhost:5000/jobs/${job.id}/pricing`, {
+      if (!data.success) {
+        const errorMsg = getErrorMessage(data.error) || "Failed to save job";
+        if (data.error?.details) {
+          console.error("Save job error details:", data.error.details);
+        }
+        throw new Error(errorMsg);
+      }
+
+      const savedJob = data.data ?? data;
+      if (!savedJob?.id) throw new Error("Backend did not return saved job id");
+
+      const pricingResponse = await fetch(`${API_BASE_URL}/jobs/${savedJob.id}/pricing`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getDevAuthHeaders(role),
         },
         body: JSON.stringify({
           labour_rate: 0,
@@ -187,46 +294,24 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
           labour_total: labourTotal,
           taxable_amount: taxableAmount,
           vat_amount: vatAmount,
-          grand_total: grandTotal
+          grand_total: grandTotal,
         }),
       });
 
-      toast.success("Job + Pricing saved successfully ✅");
+      if (!pricingResponse.ok) {
+        const pricingData = await pricingResponse.json();
+        const pricingErrorMsg = getErrorMessage(pricingData.error) || "Failed to save pricing";
+        console.error("Pricing submission failed:", pricingData);
+        toast.error(pricingErrorMsg);
+        return;
+      }
+
+      toast.success(currentJobId ? "Job updated successfully" : "Job saved successfully");
       if (role === 'manager') setIsApproved(true);
     } catch (error) {
-      console.error(error);
-      // Fallback: save to localStorage for demo
-      try {
-        const jobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-        const existingIndex = jobs.findIndex((j: any) => String(j.id) === String(jobId));
-        
-        const jobRecord = {
-            id: jobId || Date.now(),
-            customer_name: customerInfo.customerName,
-            equipment_name: "Compressor",
-            status: role === 'manager' ? "APPROVED" : "Submitted",
-            grand_total: grandTotal,
-            // Store full details for the mock!
-            customerInfo,
-            parts,
-            labor,
-            compressorChecklist,
-            dryerChecklist
-        };
-
-        if (existingIndex >= 0) {
-           jobs[existingIndex] = { ...jobs[existingIndex], ...jobRecord };
-        } else {
-           jobs.push(jobRecord);
-        }
-        
-        localStorage.setItem('mockJobs', JSON.stringify(jobs));
-        toast.success("Job saved locally (Demo Mode) ✅");
-        window.dispatchEvent(new Event('jobsUpdated'));
-        if (role === 'manager') setIsApproved(true);
-      } catch (localError) {
-        toast.error("Failed to save job ❌");
-      }
+      const errorMsg = getErrorMessage(error);
+      console.error("Failed to save job:", error, "Details:", errorMsg);
+      toast.error(errorMsg);
     }
   };
 

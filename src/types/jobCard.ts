@@ -12,6 +12,7 @@ export interface CustomerInfo {
   refNo: string;
   jobCardNo: string;
   date: string;
+  equipmentName: string;
   customerCode: string;
   attentionOf: string;
   email: string;

@@ -42,12 +42,12 @@ const Index = () => {
             {currentRole === 'engineer' ? (
                 <div style={{ padding: "20px" }}>
                     <h2 style={{ textAlign: "center", marginBottom: "10px", color: "#666" }}>Submit New Job Card</h2>
-                    <JobCardForm />
+                    <JobCardForm role={currentRole} />
                 </div>
             ) : (
                 <div style={{ padding: "20px", background: "#f5f5f5", minHeight: "100vh" }}>
                     <h2 style={{ textAlign: "center", marginBottom: "10px", color: "#666" }}>Review & Approve Jobs</h2>
-                    <JobList />
+                    <JobList role={currentRole} />
                 </div>
             )}
         </div>
