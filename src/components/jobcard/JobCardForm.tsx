@@ -1,26 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { API_BASE_URL, getDevAuthHeaders } from "@/lib/api";
-
-// Safe error message extraction
-function getErrorMessage(err: any): string {
-  if (!err) return "Something went wrong";
-  if (typeof err === "string") return err;
-  if (err?.response?.data?.message) return String(err.response.data.message);
-  if (err?.response?.data?.error?.message) return String(err.response.data.error.message);
-  if (err?.response?.data?.error?.code) return String(err.response.data.error.code);
-  if (err?.message) return String(err.message);
-  if (err?.error) return getErrorMessage(err.error);
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return "Something went wrong";
-  }
-}
 import CustomerInfoSection from "./CustomerInfoSection";
 import ChecklistSection from "./ChecklistSection";
 import PartsLaborSection from "./PartsLaborSection";
@@ -30,9 +13,9 @@ import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
 import type { JobCardData, CustomerInfo, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
 
-const initialCustomer: CustomerInfo = {
-  customerName: "", refNo: "", equipmentName: "", jobCardNo: "", date: new Date().toISOString().split("T")[0],
-  customerCode: "", attentionOf: "", email: "", contactNo: "", salesArea: "", underWarranty: false,
+const defaultCustomerInfo: CustomerInfo = {
+  customerName: "", refNo: "", jobCardNo: "", date: new Date().toISOString().split("T")[0],
+  customerCode: "", attentionOf: "", email: "", contactNo: "", salesArea: "", engineerName: "", underWarranty: false
 };
 
 const sectionVariants = {
@@ -46,12 +29,11 @@ const sectionVariants = {
 interface JobCardFormProps {
   role?: 'engineer' | 'manager';
   jobId?: number;
+  onClose?: () => void;
 }
 
-const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
-  const params = useParams();
-  const routeJobId = params.id ? Number(params.id) : undefined;
-  const [customerInfo, setCustomerInfo] = useState<CustomerInfo>(initialCustomer);
+const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) => {
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo>(defaultCustomerInfo);
   const [serviceType, setServiceType] = useState<ServiceType>("service_contract");
   const [compressorChecklist, setCompressorChecklist] = useState<ChecklistItem[]>(defaultCompressorChecklist);
   const [dryerChecklist, setDryerChecklist] = useState<ChecklistItem[]>(defaultDryerChecklist);
@@ -59,91 +41,120 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
   const [labor, setLabor] = useState<LaborItem[]>([]);
   const [otherExpenses, setOtherExpenses] = useState(0);
   const [discountPercentage, setDiscountPercentage] = useState(0);
+  const [managerName, setManagerName] = useState("");
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
-  const currentJobId = jobId ?? routeJobId;
+  const [loadingJob, setLoadingJob] = useState(!!jobId);
 
   // Load existing job data if editing
   useEffect(() => {
-    if (!currentJobId) return;
+    if (jobId) {
+      setLoadingJob(true);
+      const fetchJobData = async () => {
+        try {
+          const res = await apiFetch(`/jobs/${jobId}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.data) {
+              const jobData = data.data.job;
+              const storedJson = (typeof jobData.job_data === 'string' ? JSON.parse(jobData.job_data) : jobData.job_data) || {};
+              
+              setCustomerInfo({
+                customerName: jobData.customer_name || "",
+                refNo: jobData.ref_no || "",
+                jobCardNo: jobData.job_card_no || "",
+                date: jobData.job_date || "",
+                customerCode: jobData.customer_code || "",
+                attentionOf: jobData.attention_of || "",
+                email: jobData.email || "",
+                contactNo: jobData.contact_no || "",
+                salesArea: jobData.sales_area || "dubai",
+                engineerName: jobData.engineer_name || "",
+                underWarranty: jobData.under_warranty || false
+              });
 
-    const fetchJob = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/jobs/${currentJobId}`, {
-          headers: {
-            "Content-Type": "application/json",
-            ...getDevAuthHeaders(role),
-          },
-        });
-        const data = await res.json();
+              if (jobData.service_type) setServiceType(jobData.service_type);
+              if (jobData.other_expenses) setOtherExpenses(Number(jobData.other_expenses));
+              if (jobData.discount_percentage) setDiscountPercentage(Number(jobData.discount_percentage));
+              if (jobData.manager_name) setManagerName(jobData.manager_name);
 
-        if (!res.ok || !data.success) {
-          const errorMsg = getErrorMessage(data.error) || "Failed to fetch job";
-          if (data.error?.details) {
-            console.error("Fetch job error details:", data.error.details);
+              if (data.data.parts && data.data.parts.length > 0) {
+                 setParts(data.data.parts.map((p: any) => ({
+                    id: String(p.id),
+                    description: p.part_name,
+                    qty: Number(p.quantity) || 0,
+                    unitPrice: Number(p.unit_price) || 0,
+                    totalPrice: Number(p.total) || 0,
+                 })));
+              } else if (storedJson.parts) {
+                 setParts(storedJson.parts.map((p: any) => ({
+                    ...p,
+                    qty: Number(p.qty) || 0,
+                    unitPrice: Number(p.unitPrice) || 0,
+                    totalPrice: Number(p.totalPrice) || 0,
+                 })));
+              }
+
+              if (data.data.labor && data.data.labor.length > 0) {
+                 setLabor(data.data.labor.map((l: any) => ({
+                    id: String(l.id),
+                    description: l.description,
+                    hours: Number(l.hours) || 0,
+                    ratePerHour: Number(l.rate) || 0,
+                    totalCost: Number(l.total) || 0,
+                 })));
+              } else if (storedJson.labor) {
+                 setLabor(storedJson.labor.map((l: any) => ({
+                    ...l,
+                    hours: Number(l.hours) || 0,
+                    ratePerHour: Number(l.ratePerHour) || 0,
+                    totalCost: Number(l.totalCost) || 0,
+                 })));
+              }
+
+              if (storedJson.compressor_checklist) setCompressorChecklist(storedJson.compressor_checklist);
+              if (storedJson.dryer_checklist) setDryerChecklist(storedJson.dryer_checklist);
+              
+              if (jobData.status?.toUpperCase() === "APPROVED") setIsApproved(true);
+              setLoadingJob(false);
+              return;
+            }
           }
-          throw new Error(errorMsg);
+        } catch (e) {
+          console.error("Failed to load from backend API, falling back to local storage:", e);
         }
 
-        // Populate form fields from job data
-        const job = data.data.job;
-        setCustomerInfo({
-          customerName: job.customer_name || "",
-          refNo: job.ref_no || "",
-          equipmentName: job.equipment_name || "",
-          jobCardNo: job.job_card_no || "",
-          date: job.job_date || "",
-          customerCode: job.customer_code || "",
-          attentionOf: job.attention_of || "",
-          email: job.email || "",
-          contactNo: job.contact_no || "",
-          salesArea: job.sales_area || "",
-          underWarranty: job.under_warranty || false,
-        });
+        // Fallback to local mockJobs if API failed or no job found
+        try {
+          const jobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
+          const existingJob = jobs.find((j: any) => String(j.id) === String(jobId));
+          if (existingJob) {
+            if (existingJob.customerInfo) setCustomerInfo(existingJob.customerInfo);
+            else setCustomerInfo(prev => ({ 
+              ...prev, 
+              customerName: existingJob.customer_name || "",
+              jobCardNo: existingJob.job_card_no || prev.jobCardNo,
+              date: existingJob.job_date || prev.date
+            }));
 
-        setServiceType((job.service_type as ServiceType) || "service_contract");
-        setOtherExpenses(job.job_data?.other_expenses ?? 0);
-        setDiscountPercentage(job.job_data?.discount_percentage ?? 0);
-        setCompressorChecklist(job.job_data?.compressor_checklist ?? defaultCompressorChecklist);
-        setDryerChecklist(job.job_data?.dryer_checklist ?? defaultDryerChecklist);
-
-        setParts(
-          Array.isArray(data.data.parts)
-            ? data.data.parts.map((part: any) => ({
-                id: String(part.id ?? part.part_name ?? Math.random()),
-                description: part.part_name || part.description || "",
-                qty: part.quantity ?? part.qty ?? 0,
-                unitPrice: part.unit_price ?? part.unitPrice ?? 0,
-                totalPrice: part.total ?? part.totalPrice ?? 0,
-              }))
-            : []
-        );
-        setLabor(
-          Array.isArray(data.data.labor)
-            ? data.data.labor.map((laborItem: any) => ({
-                id: String(laborItem.id ?? laborItem.description ?? Math.random()),
-                description: laborItem.description || "",
-                hours: laborItem.hours ?? 0,
-                ratePerHour: laborItem.rate ?? laborItem.ratePerHour ?? 0,
-                totalCost: laborItem.total ?? laborItem.totalCost ?? 0,
-              }))
-            : []
-        );
-
-        // Set approval status
-        if (job.status === "APPROVED" || job.status === "CLOSED") {
-          setIsApproved(true);
+            if (existingJob.parts) setParts(existingJob.parts);
+            if (existingJob.labor) setLabor(existingJob.labor);
+            if (existingJob.compressorChecklist) setCompressorChecklist(existingJob.compressorChecklist);
+            if (existingJob.dryerChecklist) setDryerChecklist(existingJob.dryerChecklist);
+            if (existingJob.managerName) setManagerName(existingJob.managerName);
+            if (existingJob.manager_name) setManagerName(existingJob.manager_name);
+            if (existingJob.status?.toUpperCase() === "APPROVED") setIsApproved(true);
+          }
+        } catch (e) {
+          console.error("Failed to load mock job", e);
+        } finally {
+          setLoadingJob(false);
         }
+      };
 
-      } catch (error) {
-        const errorMsg = getErrorMessage(error);
-        console.error("Failed to load job for editing:", error, "Details:", errorMsg);
-        toast.error(errorMsg);
-      }
-    };
-
-    fetchJob();
-  }, [currentJobId]);
+      fetchJobData();
+    }
+  }, [jobId]);
 
   // Track overall progress
   const totalChecklist = compressorChecklist.length + dryerChecklist.length;
@@ -161,19 +172,40 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
   }, [customerInfo, doneChecklist, parts.length]);
 
   const getFormData = (): JobCardData => ({
-    customerInfo, serviceType, compressorChecklist, dryerChecklist, parts, labor, otherExpenses, discountPercentage,
+    customerInfo, serviceType, compressorChecklist, dryerChecklist, parts, labor, otherExpenses, discountPercentage, managerName,
   });
 
   const validate = (): boolean => {
     if (!customerInfo.customerName) { toast.error("Please select a customer"); return false; }
-    if (!customerInfo.equipmentName) { toast.error("Please enter an equipment name"); return false; }
     if (!customerInfo.jobCardNo) { toast.error("Please enter a job card number"); return false; }
     if (!customerInfo.date) { toast.error("Please select a date"); return false; }
     return true;
   };
 
+  const validatePricing = (): boolean => {
+    if (parts.length === 0 && labor.length === 0) {
+      toast.error("Please add at least one part or labor entry with a price before approving.");
+      return false;
+    }
+    const unpricedParts = parts.filter(p => !Number(p.unitPrice));
+    if (unpricedParts.length > 0) {
+      toast.error(`${unpricedParts.length} part(s) have no unit price set. Please fill in all highlighted price fields.`);
+      return false;
+    }
+    const unpricedLabor = labor.filter(l => !Number(l.ratePerHour));
+    if (unpricedLabor.length > 0) {
+      toast.error(`${unpricedLabor.length} labor entr(ies) have no rate set. Please fill in all highlighted rate fields.`);
+      return false;
+    }
+    return true;
+  };
+
   const handleExportPDF = async () => {
     if (!validate()) return;
+    if (!managerName) {
+      toast.warning("No manager selected — please pick a Manager Name in the Customer Info section before exporting.");
+      return;
+    }
     toast.info("Generating PDF...", { icon: <Sparkles className="h-4 w-4 animate-spin" /> });
     try {
       await generatePDF(getFormData());
@@ -193,6 +225,7 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
   // Save Function For Calling API
   const handleSaveJob = async () => {
     if (!validate()) return;
+    if (role === 'manager' && !validatePricing()) return;
 
     // CALCULATE PRICING
     const partsTotal = parts.reduce(
@@ -216,74 +249,60 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
 
     const grandTotal = taxableAmount + vatAmount;
 
-    const jobData = {
-      customer_name: customerInfo.customerName,
-      equipment_name: customerInfo.equipmentName,
-      job_card_no: customerInfo.jobCardNo,
-      job_date: customerInfo.date,
-      ref_no: customerInfo.refNo,
-      customer_code: customerInfo.customerCode,
-      attention_of: customerInfo.attentionOf,
-      email: customerInfo.email,
-      contact_no: customerInfo.contactNo,
-      sales_area: customerInfo.salesArea,
-      service_type: serviceType,
-      under_warranty: customerInfo.underWarranty,
-      other_expenses: otherExpenses,
-      discount_percentage: discountPercentage,
-      parts,
-      labor,
-      job_data: {
-        compressor_checklist: compressorChecklist,
-        dryer_checklist: dryerChecklist,
+    try {
+      // IF job exists, skip POST /jobs and just trigger pricing and status,
+      // as the backend handles upserting pricing and updating status safely
+      let effectiveJobId = jobId;
+
+      const jobPayload = {
+        customer_name: customerInfo.customerName,
+        ref_no: customerInfo.refNo,
+        job_card_no: customerInfo.jobCardNo,
+        job_date: customerInfo.date,
+        customer_code: customerInfo.customerCode,
+        attention_of: customerInfo.attentionOf,
+        email: customerInfo.email,
+        contact_no: customerInfo.contactNo,
+        sales_area: customerInfo.salesArea,
+        under_warranty: customerInfo.underWarranty,
+        engineer_name: customerInfo.engineerName,
+        manager_name: managerName,
+        equipment_name: "Compressor",
+        service_type: serviceType,
         other_expenses: otherExpenses,
         discount_percentage: discountPercentage,
-      },
-    };
+        parts,
+        labor,
+        compressor_checklist: compressorChecklist,
+        dryer_checklist: dryerChecklist,
+      };
 
-    console.log("FINAL PAYLOAD:", jobData);
+      if (!effectiveJobId) {
+        // CREATE NEW JOB
+        const response = await apiFetch("/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(jobPayload),
+        });
 
-    try {
-      const method = currentJobId ? "PUT" : "POST";
-      const url = currentJobId ? `${API_BASE_URL}/jobs/${currentJobId}` : `${API_BASE_URL}/jobs`;
+        if (!response.ok) throw new Error("Backend response failed");
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          ...getDevAuthHeaders(role),
-        },
-        body: JSON.stringify(jobData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorMsg = getErrorMessage(data.error) || "Failed to save job";
-        if (data.error?.details) {
-          console.error("Save job error details:", data.error.details);
-        }
-        console.error("Save job failed with response:", data);
-        toast.error(errorMsg);
-        return;
+        const job = await response.json();
+        effectiveJobId = job.data?.job?.id || job.id;
+      } else {
+        // UPDATE EXISTING JOB
+        await apiFetch(`/jobs/${effectiveJobId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(jobPayload),
+        });
       }
 
-      if (!data.success) {
-        const errorMsg = getErrorMessage(data.error) || "Failed to save job";
-        if (data.error?.details) {
-          console.error("Save job error details:", data.error.details);
-        }
-        throw new Error(errorMsg);
-      }
-
-      const savedJob = data.data ?? data;
-      if (!savedJob?.id) throw new Error("Backend did not return saved job id");
-
-      const pricingResponse = await fetch(`${API_BASE_URL}/jobs/${savedJob.id}/pricing`, {
+      // SAVE PRICING
+      await apiFetch(`/jobs/${effectiveJobId}/pricing`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...getDevAuthHeaders(role),
         },
         body: JSON.stringify({
           labour_rate: 0,
@@ -294,24 +313,56 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
           labour_total: labourTotal,
           taxable_amount: taxableAmount,
           vat_amount: vatAmount,
-          grand_total: grandTotal,
+          grand_total: grandTotal
         }),
       });
 
-      if (!pricingResponse.ok) {
-        const pricingData = await pricingResponse.json();
-        const pricingErrorMsg = getErrorMessage(pricingData.error) || "Failed to save pricing";
-        console.error("Pricing submission failed:", pricingData);
-        toast.error(pricingErrorMsg);
-        return;
+      if (role === 'manager' && !isApproved) {
+          // UPDATE STATUS TO APPROVED IN BACKEND
+          await apiFetch(`/jobs/${effectiveJobId}/status`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "APPROVED" }),
+          });
+          setIsApproved(true);
       }
 
-      toast.success(currentJobId ? "Job updated successfully" : "Job saved successfully");
-      if (role === 'manager') setIsApproved(true);
+      toast.success("Job + Pricing saved successfully ✅");
     } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error("Failed to save job:", error, "Details:", errorMsg);
-      toast.error(errorMsg);
+      console.error(error);
+      // Fallback: save to localStorage for demo
+      try {
+        const jobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
+        const existingIndex = jobs.findIndex((j: any) => String(j.id) === String(jobId));
+        
+        const jobRecord = {
+            id: jobId || Date.now(),
+            customer_name: customerInfo.customerName,
+            equipment_name: "Compressor",
+            status: role === 'manager' ? "APPROVED" : "Submitted",
+            grand_total: grandTotal,
+            // Store full details for the mock!
+            customerInfo,
+            managerName,
+            parts,
+            labor,
+            compressorChecklist,
+            dryerChecklist
+        };
+
+        if (existingIndex >= 0) {
+           jobs[existingIndex] = { ...jobs[existingIndex], ...jobRecord };
+        } else {
+           jobs.push(jobRecord);
+        }
+        
+        localStorage.setItem('mockJobs', JSON.stringify(jobs));
+        toast.success("Job saved locally (Demo Mode) ✅");
+        window.dispatchEvent(new Event('jobsUpdated'));
+        if (role === 'manager') setIsApproved(true);
+      } catch (localError) {
+        toast.error("Failed to save job ❌");
+      }
     }
   };
 
@@ -323,6 +374,15 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
   const scrollToTop = () => {
     document.querySelector('main')?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  if (loadingJob) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-muted-foreground font-medium text-sm">Loading job data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background" onScroll={handleScroll}>
@@ -343,17 +403,17 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="flex items-center gap-3.5"
+            className="flex items-center gap-3"
           >
             <motion.div
-              className="h-11 w-11 rounded-2xl flex items-center justify-center btn-primary-gradient"
+              className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl flex items-center justify-center btn-primary-gradient flex-shrink-0"
               whileHover={{ rotate: -5, scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
             >
               <ClipboardList className="h-5 w-5 text-primary-foreground" />
             </motion.div>
             <div>
-              <h1 className="text-lg font-display font-extrabold tracking-tight">Field Service Report</h1>
+              <h1 className="text-base sm:text-lg font-display font-extrabold tracking-tight whitespace-nowrap">Field Service Report</h1>
               <p className="text-[0.7rem] text-muted-foreground font-medium tracking-wide uppercase">Job Card Management</p>
             </div>
           </motion.div>
@@ -386,7 +446,7 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="flex gap-2.5"
+            className="flex gap-2.5 self-end sm:self-center"
           >
             {role === 'manager' && isApproved && (
               <>
@@ -427,6 +487,8 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
             serviceType={serviceType}
             onChange={setCustomerInfo}
             onServiceTypeChange={setServiceType}
+            managerName={managerName}
+            onManagerNameChange={setManagerName}
           />
         </motion.div>
 
@@ -482,32 +544,54 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
           animate="visible"
           className="flex flex-col sm:flex-row gap-3 justify-center pb-12 pt-4"
         >
-          {role === 'manager' && isApproved && (
+          {onClose && (
             <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}>
-              <Button onClick={handleExportPDF} size="lg" className="gap-2.5 btn-primary-gradient border-0 rounded-2xl px-8 h-12 text-sm font-bold w-full sm:w-auto">
-                <Sparkles className="h-4 w-4" /> Generate PDF Report
+              <Button onClick={onClose} variant="ghost" size="lg" className="rounded-2xl px-6 h-12 text-sm font-bold w-full sm:w-auto border border-border/60 hover:bg-slate-100">
+                ← Back to List
               </Button>
             </motion.div>
           )}
-          
-          {!isApproved && (
+
+          {/* Engineers: always show Save to Database */}
+          {role !== 'manager' && (
             <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}>
               <Button
                 onClick={handleSaveJob}
                 size="lg"
                 className="gap-2.5 rounded-2xl px-8 h-12 text-sm font-bold bg-green-600 text-white hover:bg-green-700 w-full sm:w-auto"
               >
-                {role === 'manager' ? 'Save & Approve Job' : 'Save to Database'}
+                Save to Database
               </Button>
             </motion.div>
           )}
 
-          {role === 'manager' && isApproved && (
+          {/* Managers: always show a save button */}
+          {role === 'manager' && (
             <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}>
-              <Button onClick={handleExportExcel} variant="outline" size="lg" className="gap-2.5 rounded-2xl px-8 h-12 text-sm font-bold border-border/80 hover:bg-secondary w-full sm:w-auto">
-                <FileSpreadsheet className="h-5 w-5" /> Export to Excel
+              <Button
+                onClick={handleSaveJob}
+                size="lg"
+                className="gap-2.5 rounded-2xl px-8 h-12 text-sm font-bold bg-green-600 text-white hover:bg-green-700 w-full sm:w-auto"
+              >
+                {isApproved ? 'Save Pricing' : 'Save & Approve Job'}
               </Button>
             </motion.div>
+          )}
+
+          {/* PDF and Excel — only after approval */}
+          {role === 'manager' && isApproved && (
+            <>
+              <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}>
+                <Button onClick={handleExportPDF} size="lg" className="gap-2.5 btn-primary-gradient border-0 rounded-2xl px-8 h-12 text-sm font-bold w-full sm:w-auto">
+                  <Sparkles className="h-4 w-4" /> Generate PDF
+                </Button>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }}>
+                <Button onClick={handleExportExcel} variant="outline" size="lg" className="gap-2.5 rounded-2xl px-8 h-12 text-sm font-bold border-border/80 hover:bg-secondary w-full sm:w-auto">
+                  <FileSpreadsheet className="h-5 w-5" /> Export Excel
+                </Button>
+              </motion.div>
+            </>
           )}
         </motion.div>
 
@@ -516,7 +600,7 @@ const JobCardForm = ({ role = 'engineer', jobId }: JobCardFormProps) => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.8 }}
-          className="flex items-center justify-center gap-6 pb-8 text-xs text-muted-foreground"
+          className="flex items-center justify-center gap-3 sm:gap-6 pb-8 text-xs text-muted-foreground flex-wrap"
         >
           <div className="flex items-center gap-1.5">
             <Zap className="h-3 w-3 text-primary" />

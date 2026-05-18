@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { ClipboardCheck, CheckCircle2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChecklistItem, CheckStatus } from "@/types/jobCard";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Props {
   title: string;
@@ -17,6 +18,8 @@ const statusOptions: { value: CheckStatus; label: string; color: string }[] = [
 ];
 
 const ChecklistSection = ({ title, items, onChange, delay = 0.2 }: Props) => {
+  const isMobile = useIsMobile();
+
   const updateStatus = (id: number, status: CheckStatus) => {
     onChange(items.map((item) => (item.id === id ? { ...item, status } : item)));
   };
@@ -88,50 +91,86 @@ const ChecklistSection = ({ title, items, onChange, delay = 0.2 }: Props) => {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border/60">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/40">
-              <th className="text-left py-3 px-4 text-[0.65rem] uppercase tracking-wider text-muted-foreground font-bold w-12">#</th>
-              <th className="text-left py-3 px-4 text-[0.65rem] uppercase tracking-wider text-muted-foreground font-bold">Job Description</th>
-              <th className="text-left py-3 px-4 text-[0.65rem] uppercase tracking-wider text-muted-foreground font-bold w-36">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, idx) => (
-              <motion.tr
-                key={item.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: delay + idx * 0.02 }}
-                className={`table-row-interactive ${item.status === 'done' ? 'bg-success/[0.02]' : ''}`}
-              >
-                <td className="py-2.5 px-4 text-muted-foreground text-xs font-mono">{String(item.id).padStart(2, '0')}</td>
-                <td className={`py-2.5 px-4 text-sm transition-all duration-300 ${item.status === 'done' ? 'text-muted-foreground line-through' : ''}`}>
-                  {item.description}
-                </td>
-                <td className="py-2.5 px-4">
-                  <Select value={item.status} onValueChange={(v) => updateStatus(item.id, v as CheckStatus)}>
-                    <SelectTrigger className={`h-8 text-xs rounded-lg border-border/60 transition-all duration-300 ${
-                      item.status === 'done' ? 'border-success/30 bg-success/[0.05]' :
-                      item.status === 'pending' ? 'border-warning/30 bg-warning/[0.05]' : ''
-                    }`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </td>
-              </motion.tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {isMobile ? (
+        <div className="space-y-2">
+          {items.map((item, idx) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: delay + idx * 0.02 }}
+              className={`p-3 rounded-lg border flex items-center gap-3 ${item.status === 'done' ? 'bg-success/5 border-success/20' : 'bg-background border-border/60'}`}
+            >
+              <div className="text-muted-foreground text-xs font-mono">{String(item.id).padStart(2, '0')}</div>
+              <div className={`flex-1 text-sm transition-all duration-300 ${item.status === 'done' ? 'text-muted-foreground line-through' : ''}`}>
+                {item.description}
+              </div>
+              <div className="w-32">
+                <Select value={item.status} onValueChange={(v) => updateStatus(item.id, v as CheckStatus)}>
+                  <SelectTrigger className={`h-8 text-xs rounded-lg border-border/60 transition-all duration-300 ${
+                    item.status === 'done' ? 'border-success/30 bg-success/10' :
+                    item.status === 'pending' ? 'border-warning/30 bg-warning/10' : 'bg-background'
+                  }`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border/60">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/40">
+                <th className="text-left py-3 px-4 text-[0.65rem] uppercase tracking-wider text-muted-foreground font-bold w-12">#</th>
+                <th className="text-left py-3 px-4 text-[0.65rem] uppercase tracking-wider text-muted-foreground font-bold">Job Description</th>
+                <th className="text-left py-3 px-4 text-[0.65rem] uppercase tracking-wider text-muted-foreground font-bold w-36">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, idx) => (
+                <motion.tr
+                  key={item.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: delay + idx * 0.02 }}
+                  className={`table-row-interactive ${item.status === 'done' ? 'bg-success/[0.02]' : ''}`}
+                >
+                  <td className="py-2.5 px-4 text-muted-foreground text-xs font-mono">{String(item.id).padStart(2, '0')}</td>
+                  <td className={`py-2.5 px-4 text-sm transition-all duration-300 ${item.status === 'done' ? 'text-muted-foreground line-through' : ''}`}>
+                    {item.description}
+                  </td>
+                  <td className="py-2.5 px-4">
+                    <Select value={item.status} onValueChange={(v) => updateStatus(item.id, v as CheckStatus)}>
+                      <SelectTrigger className={`h-8 text-xs rounded-lg border-border/60 transition-all duration-300 ${
+                        item.status === 'done' ? 'border-success/30 bg-success/[0.05]' :
+                        item.status === 'pending' ? 'border-warning/30 bg-warning/[0.05]' : ''
+                      }`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Completion celebration */}
       {allDone && (

@@ -12,12 +12,12 @@ export interface CustomerInfo {
   refNo: string;
   jobCardNo: string;
   date: string;
-  equipmentName: string;
   customerCode: string;
   attentionOf: string;
   email: string;
   contactNo: string;
   salesArea: SalesArea;
+  engineerName: string;
   underWarranty: boolean;
 }
 
@@ -34,16 +34,16 @@ export interface ChecklistItem {
 export interface PartItem {
   id: string;
   description: string;
-  qty: number;
-  unitPrice: number;
+  qty: number | string;
+  unitPrice: number | string;
   totalPrice: number;
 }
 
 export interface LaborItem {
   id: string;
   description: string;
-  hours: number;
-  ratePerHour: number;
+  hours: number | string;
+  ratePerHour: number | string;
   totalCost: number;
 }
 
@@ -65,4 +65,5 @@ export interface JobCardData {
   labor: LaborItem[];
   otherExpenses: number;
   discountPercentage: number;
+  managerName?: string;
 }

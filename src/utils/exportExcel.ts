@@ -280,7 +280,7 @@ export function generateExcel(data: JobCardData) {
   setMerged(ws, "R16:R16", "Taxable Amt", centerBoldStyle);
   setMerged(ws, "S16:T16", "Gross Amount\nIncl. VAT", centerBoldStyle);
 
-  const checklistLines = data.compressorChecklist.map((item) => `${item.id}: ${item.description}`);
+  const checklistLines = (Array.isArray(data.compressorChecklist) ? data.compressorChecklist : []).map((item) => `${item.id}: ${item.description}`);
   const rowStart = 17;
 
   for (let r = rowStart; r <= 34; r += 1) {
@@ -337,7 +337,7 @@ export function generateExcel(data: JobCardData) {
     setMerged(ws, `S${r}:T${r}`, gross as string | number, baseCellStyle);
   }
 
-  const totalLabor = data.labor.reduce((sum, row) => sum + row.totalCost, 0);
+  const totalLabor = (Array.isArray(data.labor) ? data.labor : []).reduce((sum, row) => sum + (Number(row.totalCost) || 0), 0);
 
   setMerged(ws, "A35:M35", "TOTAL LABOR COST", labelStyle);
   setCell(ws, 35, 13, totalLabor as string | number, baseCellStyle); // N is 13
@@ -404,5 +404,18 @@ export function generateExcel(data: JobCardData) {
   ws["!ref"] = `A1:T${LAST_ROW}`;
 
   XLSX.utils.book_append_sheet(wb, ws, "Field Service Report");
-  XLSX.writeFile(wb, `FieldServiceReport_${data.customerInfo.jobCardNo || "report"}.xlsx`);
+  const filename = `FieldServiceReport_${data.customerInfo.jobCardNo || "report"}.xlsx`;
+  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([new Uint8Array(wbout)], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

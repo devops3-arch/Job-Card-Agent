@@ -1,10 +1,24 @@
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+// Centralized authenticated fetch wrapper.
+// - Adds Authorization: Bearer <token> header automatically.
+// - On 401, clears credentials and redirects to /auth.
 
-export const getDevAuthHeaders = (role: "engineer" | "manager" | "admin") => {
-  const userId = role === "manager" ? "2" : role === "admin" ? "3" : "1";
+export const API_BASE = "http://localhost:3001";
 
-  return {
-    "X-DEV-USER-ID": userId,
-    "X-DEV-USER-ROLE": role,
-  };
-};
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+    const token = localStorage.getItem("authToken");
+    const headers = new Headers(init.headers || {});
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+    const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+    const res = await fetch(url, { ...init, headers });
+
+    if (res.status === 401) {
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("user");
+        if (window.location.pathname !== "/auth") {
+            window.location.href = "/auth";
+        }
+    }
+    return res;
+}

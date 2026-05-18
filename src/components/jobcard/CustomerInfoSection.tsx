@@ -11,6 +11,8 @@ interface Props {
   serviceType: ServiceType;
   onChange: (data: CustomerInfo) => void;
   onServiceTypeChange: (type: ServiceType) => void;
+  managerName: string;
+  onManagerNameChange: (name: string) => void;
 }
 
 const serviceTypes: { value: ServiceType; label: string; emoji: string }[] = [
@@ -30,7 +32,7 @@ const fieldVariants = {
 
 const inputClass = "h-11 rounded-xl border-border/60 bg-background hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all duration-300";
 
-const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange }: Props) => {
+const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange, managerName, onManagerNameChange }: Props) => {
   const update = (field: keyof CustomerInfo, value: string) => {
     onChange({ ...data, [field]: value });
   };
@@ -38,7 +40,6 @@ const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange 
   const fields = [
     { label: "Customer Name *", field: "customerName", placeholder: "Enter customer name" },
     { label: "Ref No.", field: "refNo", placeholder: "XXXXXXX" },
-    { label: "Equipment Name", field: "equipmentName", placeholder: "Enter equipment name" },
     { label: "Job Card No. *", field: "jobCardNo", placeholder: "05", icon: Hash },
     { label: "Date *", field: "date", inputType: "date", icon: Calendar },
     { label: "Purpose of Visit *", type: "serviceType" },
@@ -46,7 +47,9 @@ const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange 
     { label: "Attention Of", field: "attentionOf", placeholder: "Contact person", icon: User },
     { label: "Email", field: "email", placeholder: "email@example.com", icon: Mail, inputType: "email" },
     { label: "Contact No.", field: "contactNo", placeholder: "+971-XX-XXXXXXX", icon: Phone },
+    { label: "Engineer Name *", type: "engineerName" },
     { label: "Sales Area *", type: "salesArea" },
+    { label: "Manager Name", type: "managerName" },
   ];
 
   return (
@@ -58,7 +61,7 @@ const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange 
         Customer Information
       </h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4">
         {fields.map((f, i) => (
           <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
             <label className="field-label">{f.label}</label>
@@ -93,6 +96,29 @@ const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange 
                   {(['Dubai', 'Northern Emirates', 'Abu Dhabi', 'Abu Dhabi Variable'] as SalesArea[]).map((loc) => (
                     <SelectItem key={loc} value={loc}>{loc}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            ) : f.type === "engineerName" ? (
+              <Select value={data.engineerName} onValueChange={(v) => update("engineerName", v)}>
+                <SelectTrigger className={inputClass}>
+                  <SelectValue placeholder="Select engineer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Bijmon Mathai">Bijmon Mathai</SelectItem>
+                  <SelectItem value="Sinoy Syamalan">Sinoy Syamalan</SelectItem>
+                  <SelectItem value="Fasil Musthafa">Fasil Musthafa</SelectItem>
+                  <SelectItem value="Sameer Lambay">Sameer Lambay</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : f.type === "managerName" ? (
+              <Select value={managerName} onValueChange={onManagerNameChange}>
+                <SelectTrigger className={inputClass}>
+                  <SelectValue placeholder="Select manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Nitesh gawali">Nitesh Gawali</SelectItem>
+                  <SelectItem value="Arvind kumar Jaiswal">Arvind Kumar Jaiswal</SelectItem>
+                  <SelectItem value="Mohan Krishnan">Mohan Krishnan</SelectItem>
                 </SelectContent>
               </Select>
             ) : f.icon ? (
