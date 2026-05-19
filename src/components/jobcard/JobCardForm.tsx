@@ -13,6 +13,27 @@ import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
 import type { JobCardData, CustomerInfo, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
 
+// Safely extract a readable string from any backend error shape.
+function normalizeApiError(data: any): string {
+  const err = data?.error;
+  if (typeof err === "string") return err;
+  if (typeof data?.message === "string") return data.message;
+  if (typeof err?.message === "string") return err.message;
+  if (typeof err?.code === "string") return err.code;
+  if (typeof err?.details === "string") return err.details;
+  if (Array.isArray(err?.details)) {
+    return err.details.map((d: any) => d?.message || String(d)).join(", ");
+  }
+  return "Failed to save job";
+}
+
+// Strip undefined values so JSON.stringify doesn't produce nulls for missing fields.
+function removeUndefined(obj: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([_, v]) => v !== undefined)
+  );
+}
+
 const defaultCustomerInfo: CustomerInfo = {
   customerName: "", refNo: "", jobCardNo: "", date: new Date().toISOString().split("T")[0],
   customerCode: "", attentionOf: "", email: "", contactNo: "", salesArea: "", engineerName: "", underWarranty: false
@@ -229,12 +250,14 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
 
     // CALCULATE PRICING
     const partsTotal = parts.reduce(
-      (sum, item) => sum + (item.qty || 0) * (item.unitPrice || 0),
+      (sum, item) =>
+  sum + Number(item.qty || 0) * Number(item.unitPrice || 0),
       0
     );
 
     const labourTotal = labor.reduce(
-      (sum, item) => sum + (item.hours || 0) * (item.ratePerHour || 0),
+      (sum, item) =>
+  sum + Number(item.hours || 0) * Number(item.ratePerHour || 0),
       0
     );
 
@@ -254,56 +277,89 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       // as the backend handles upserting pricing and updating status safely
       let effectiveJobId = jobId;
 
-      const jobPayload = {
+      // Sanitize parts — coerce numerics, strip undefined
+      const sanitizedParts = (parts || []).map((p) => removeUndefined({
+        id: p.id,
+        description: p.description || "",
+        qty: Number(p.qty) || 0,
+        unitPrice: Number(p.unitPrice) || 0,
+        totalPrice: Number(p.qty || 0) * Number(p.unitPrice || 0),
+      }));
+
+      // Sanitize labor — coerce numerics, strip undefined
+      const sanitizedLabor = (labor || []).map((l) => removeUndefined({
+        id: l.id,
+        description: l.description || "",
+        hours: Number(l.hours) || 0,
+        ratePerHour: Number(l.ratePerHour) || 0,
+        totalCost: Number(l.hours || 0) * Number(l.ratePerHour || 0),
+      }));
+
+      // Build sanitized payload — strictly match Zod schema, put extras in job_data
+      const jobPayload = removeUndefined({
         customer_name: customerInfo.customerName,
-        ref_no: customerInfo.refNo,
-        job_card_no: customerInfo.jobCardNo,
-        job_date: customerInfo.date,
-        customer_code: customerInfo.customerCode,
-        attention_of: customerInfo.attentionOf,
-        email: customerInfo.email,
-        contact_no: customerInfo.contactNo,
-        sales_area: customerInfo.salesArea,
-        under_warranty: customerInfo.underWarranty,
-        engineer_name: customerInfo.engineerName,
-        manager_name: managerName,
         equipment_name: "Compressor",
-        service_type: serviceType,
-        other_expenses: otherExpenses,
-        discount_percentage: discountPercentage,
-        parts,
-        labor,
-        compressor_checklist: compressorChecklist,
-        dryer_checklist: dryerChecklist,
-      };
+        job_card_no: customerInfo.jobCardNo || undefined,
+        job_date: customerInfo.date || undefined,
+        ref_no: customerInfo.refNo || undefined,
+        sales_area: customerInfo.salesArea || undefined,
+        service_type: serviceType || undefined,
+        under_warranty: Boolean(customerInfo.underWarranty),
+        customer_code: customerInfo.customerCode || undefined,
+        attention_of: customerInfo.attentionOf || undefined,
+        email: customerInfo.email || undefined,
+        contact_no: customerInfo.contactNo || undefined,
+        other_expenses: Number(otherExpenses) || 0,
+        discount_percentage: Number(discountPercentage) || 0,
+        parts: sanitizedParts,
+        labor: sanitizedLabor,
+        job_data: {
+          engineer_name: customerInfo.engineerName || "",
+          manager_name: managerName || "",
+          compressor_checklist: compressorChecklist || [],
+          dryer_checklist: dryerChecklist || [],
+        }
+      });
+
+      console.log("FINAL PAYLOAD:", JSON.stringify(jobPayload, null, 2));
 
       if (!effectiveJobId) {
         // CREATE NEW JOB
         const response = await apiFetch("/jobs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(jobPayload),
         });
 
-        if (!response.ok) throw new Error("Backend response failed");
+        const resData = await response.json();
+        console.log("Backend response (create):", resData);
 
-        const job = await response.json();
-        effectiveJobId = job.data?.job?.id || job.id;
+        if (!response.ok) {
+          if (resData?.error?.details) console.error("Validation details:", resData.error.details);
+          toast.error(normalizeApiError(resData));
+          return;
+        }
+
+        effectiveJobId = resData.data?.job?.id || resData.data?.id || resData.id;
       } else {
         // UPDATE EXISTING JOB
-        await apiFetch(`/jobs/${effectiveJobId}`, {
+        const response = await apiFetch(`/jobs/${effectiveJobId}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(jobPayload),
         });
+
+        const resData = await response.json();
+        console.log("Backend response (update):", resData);
+
+        if (!response.ok) {
+          if (resData?.error?.details) console.error("Validation details:", resData.error.details);
+          toast.error(normalizeApiError(resData));
+          return;
+        }
       }
 
       // SAVE PRICING
-      await apiFetch(`/jobs/${effectiveJobId}/pricing`, {
+      const pricingRes = await apiFetch(`/jobs/${effectiveJobId}/pricing`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           labour_rate: 0,
           service_charge: serviceCharge,
@@ -317,52 +373,40 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         }),
       });
 
+      const pricingData = await pricingRes.json();
+      console.log("Backend response (pricing):", pricingData);
+
+      if (!pricingRes.ok) {
+        if (pricingData?.error?.details) console.error("Pricing validation details:", pricingData.error.details);
+        toast.error(normalizeApiError(pricingData));
+        return;
+      }
+
       if (role === 'manager' && !isApproved) {
           // UPDATE STATUS TO APPROVED IN BACKEND
-          await apiFetch(`/jobs/${effectiveJobId}/status`, {
+          const statusRes = await apiFetch(`/jobs/${effectiveJobId}/status`, {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: "APPROVED" }),
           });
+
+          const statusData = await statusRes.json();
+          console.log("Backend response (status):", statusData);
+
+          if (!statusRes.ok) {
+            if (statusData?.error?.details) console.error("Status validation details:", statusData.error.details);
+            toast.error(normalizeApiError(statusData));
+            return;
+          }
+
           setIsApproved(true);
       }
 
-      toast.success("Job + Pricing saved successfully ✅");
+      toast.success("Job + Pricing saved to database ✅");
+      window.dispatchEvent(new Event('jobsUpdated'));
     } catch (error) {
-      console.error(error);
-      // Fallback: save to localStorage for demo
-      try {
-        const jobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-        const existingIndex = jobs.findIndex((j: any) => String(j.id) === String(jobId));
-        
-        const jobRecord = {
-            id: jobId || Date.now(),
-            customer_name: customerInfo.customerName,
-            equipment_name: "Compressor",
-            status: role === 'manager' ? "APPROVED" : "Submitted",
-            grand_total: grandTotal,
-            // Store full details for the mock!
-            customerInfo,
-            managerName,
-            parts,
-            labor,
-            compressorChecklist,
-            dryerChecklist
-        };
-
-        if (existingIndex >= 0) {
-           jobs[existingIndex] = { ...jobs[existingIndex], ...jobRecord };
-        } else {
-           jobs.push(jobRecord);
-        }
-        
-        localStorage.setItem('mockJobs', JSON.stringify(jobs));
-        toast.success("Job saved locally (Demo Mode) ✅");
-        window.dispatchEvent(new Event('jobsUpdated'));
-        if (role === 'manager') setIsApproved(true);
-      } catch (localError) {
-        toast.error("Failed to save job ❌");
-      }
+      console.error("Save failed:", error);
+      const message = error instanceof Error ? error.message : "Failed to save job";
+      toast.error(`Save failed: ${message}`);
     }
   };
 

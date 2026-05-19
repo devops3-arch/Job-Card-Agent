@@ -24,10 +24,11 @@ const numericNonNegative = () =>
 
 const STATUS_VALUES = [
   "DRAFT",
-  "WAITING_FOR_PRICING",
   "WAITING_PRICING",
+  "WAITING_APPROVAL",
   "APPROVED",
-  "CLOSED",
+  "REJECTED",
+  "COMPLETED",
 ];
 
 export const idParamSchema = z.object({

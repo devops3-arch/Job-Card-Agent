@@ -32,3 +32,8 @@ CREATE TABLE IF NOT EXISTS approved_documents (
 
 CREATE INDEX IF NOT EXISTS approved_documents_job_id_idx ON approved_documents(job_id);
 CREATE INDEX IF NOT EXISTS approved_documents_generated_at_idx ON approved_documents(generated_at);
+
+-- Performance Indexes
+CREATE INDEX IF NOT EXISTS job_master_engineer_id_idx ON job_master(engineer_id);
+CREATE INDEX IF NOT EXISTS job_parts_job_id_idx ON job_parts(job_id);
+CREATE INDEX IF NOT EXISTS job_labor_job_id_idx ON job_labor(job_id);

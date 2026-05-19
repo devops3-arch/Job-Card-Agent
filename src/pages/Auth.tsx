@@ -20,6 +20,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
+// Safely extract a readable string from any backend error shape.
+function normalizeAuthError(data: any): string {
+  const err = data?.error;
+  if (typeof err === "string") return err;
+  if (typeof data?.message === "string") return data.message;
+  if (typeof err?.message === "string") return err.message;
+  if (typeof err?.code === "string") return err.code;
+  if (Array.isArray(err?.details))
+    return err.details.map((d: any) => d?.message || String(d)).join(", ");
+  if (typeof err?.details === "string") return err.details;
+  return "Authentication failed";
+}
+
 type AuthMode = "signin" | "signup";
 
 const features = [
@@ -76,15 +89,9 @@ const Auth = () => {
     if (!validate()) return;
     setIsLoading(true);
     try {
-      const endpoint = mode === "signin" ? "/auth/signin" : "/auth/signup";
-      const payload =
-        mode === "signin"
-          ? { email: formData.email, password: formData.password }
-          : {
-              fullName: formData.fullName,
-              email: formData.email,
-              password: formData.password,
-            };
+      // Always use /auth/login — signup is disabled while backend route is unavailable.
+      const endpoint = "/auth/login";
+      const payload = { email: formData.email, password: formData.password };
 
       const res = await apiFetch(endpoint, {
         method: "POST",
@@ -94,11 +101,19 @@ const Auth = () => {
       const data = await res.json();
 
       if (res.ok) {
-        localStorage.setItem("authToken", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+        // Store tokens — handle both flat and nested (data.data) response shapes.
+        const token = data.data?.token || data.data?.accessToken || data.token || data.accessToken || "";
+        const accessToken = data.data?.accessToken || data.accessToken || data.data?.token || data.token || "";
+        const refreshToken = data.data?.refreshToken || data.refreshToken || "";
+        const user = data.data?.user || data.user;
+
+        localStorage.setItem("authToken", token);
+        localStorage.setItem("accessToken", accessToken);
+        if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+        localStorage.setItem("user", JSON.stringify(user));
         window.location.href = "/";
       } else {
-        setErrors({ submit: data.message || "Authentication failed" });
+        setErrors({ submit: normalizeAuthError(data) });
       }
     } catch {
       setErrors({ submit: "Network error. Please try again." });
@@ -211,9 +226,9 @@ const Auth = () => {
             </span>
           </div>
 
-          {/* Mode toggle tabs */}
+          {/* Mode toggle tabs — signup hidden while backend route is unavailable */}
           <div className="flex rounded-xl bg-muted p-1 mb-8">
-            {(["signin", "signup"] as AuthMode[]).map((m) => (
+            {(["signin"] as AuthMode[]).map((m) => (
               <button
                 key={m}
                 onClick={() => switchMode(m)}
@@ -223,7 +238,7 @@ const Auth = () => {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {m === "signin" ? "Sign In" : "Sign Up"}
+                Sign In
               </button>
             ))}
           </div>
@@ -477,17 +492,7 @@ const Auth = () => {
             </motion.form>
           </AnimatePresence>
 
-          {/* Bottom switch */}
-          <p className="text-center text-sm text-muted-foreground mt-6">
-            {mode === "signin" ? "Don't have an account? " : "Already have an account? "}
-            <button
-              type="button"
-              onClick={() => switchMode(mode === "signin" ? "signup" : "signin")}
-              className="text-primary font-medium hover:underline transition-colors"
-            >
-              {mode === "signin" ? "Sign up" : "Sign in"}
-            </button>
-          </p>
+          {/* Bottom switch — signup hidden while backend route is unavailable */}
 
           <p className="text-center text-xs text-muted-foreground/60 mt-4">
             By continuing, you agree to our{" "}

@@ -2,7 +2,7 @@
 // - Adds Authorization: Bearer <token> header automatically.
 // - On 401, clears credentials and redirects to /auth.
 
-export const API_BASE = "http://localhost:3001";
+export const API_BASE = "http://localhost:5000";
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
     const token = localStorage.getItem("authToken");

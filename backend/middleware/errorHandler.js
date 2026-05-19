@@ -90,14 +90,18 @@ const errorHandler = (err, req, res, next) => {
 
   if (!(error instanceof AppError)) {
     const reqLogger = req.logger || logger;
-    reqLogger.error("Route failure", {
-      eventType: "error",
-      error: {
-        message: error.message,
-        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
-        name: error.name,
-      },
-    });
+    reqLogger.error({
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint,
+      position: error.position,
+      table: error.table,
+      column: error.column,
+      constraint: error.constraint,
+      schema: error.schema
+    }, "Route failure");
     error = new AppError("Internal server error", 500, "INTERNAL_SERVER_ERROR");
   }
 
