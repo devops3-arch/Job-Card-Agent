@@ -161,7 +161,14 @@ app.get("/", (_req, res) => res.send("Backend is running"));
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-app.get("/health", (_req, res) => sendSuccess(res, { status: "healthy", timestamp: new Date().toISOString() }));
+app.get("/health", async (req, res) => {
+  res.json({
+    success: true,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV
+  });
+});
 
 /**
  * @swagger
@@ -364,7 +371,6 @@ app.post(
       dryer_checklist: sanitizeJson(req.body?.dryer_checklist ?? []),
     };
 
-    console.log("SANITIZED JOB DATA", JSON.stringify(safeJobData, null, 2));
 
     // ONLY validation: customer_name and equipment_name are required
     if (!customer_name) {
@@ -422,9 +428,6 @@ app.post(
             userId
         ];
         
-        console.log("INSERT COLUMN COUNT", columns.length);
-        console.log("INSERT VALUES COUNT", insertValues.length);
-        console.log("INSERT VALUES:", insertValues);
 
         const jsonbColumns = new Set(["parts", "labor", "job_data"]);
 
@@ -727,26 +730,19 @@ app.put(
   validate({ params: idParamSchema, body: jobUpdateSchema }),
   asyncHandler(async (req, res) => {
     console.error("[ROUTE HIT] ===== PUT /jobs/:id ROUTE EXECUTION STARTED ===== jobId=" + req.params.id);
-    console.log("[UPDATE JOB] ========== START PUT /jobs/:id HANDLER ==========");
-    console.log("[UPDATE JOB] Step 0 - Route entry. jobId from params:", req.params.id);
     
     const jobId = Number(req.params.id);
-    console.log("[UPDATE JOB] Step 0a - Parsed jobId as Number:", jobId, "Type:", typeof jobId);
     
     if (!Number.isInteger(jobId) || jobId <= 0) {
-      console.log("[UPDATE JOB] Step 0b - FAILED: Invalid jobId (not integer or <= 0)");
       throw new AppError("Invalid job id", 400, "INVALID_JOB_ID");
     }
 
-    console.log("[UPDATE JOB] Step 1 - Fetching job_master record from DB");
     let jobResult;
     try {
       jobResult = await pool.query(
         "SELECT id, status, engineer_id FROM job_master WHERE id = $1",
         [jobId]
       );
-      console.log("[UPDATE JOB] Step 1a - SELECT job_master SUCCESS. Rows found:", jobResult.rows.length);
-      console.log("[UPDATE JOB] Step 1b - Job data:", JSON.stringify(jobResult.rows[0] || null));
     } catch (err) {
       console.error("[FAILED QUERY] SELECT job_master failed:");
       console.error(err.message);
@@ -755,26 +751,20 @@ app.put(
     }
 
     if (jobResult.rows.length === 0) {
-      console.log("[UPDATE JOB] Step 1c - FAILED: Job not found");
       throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
     }
 
     const job = jobResult.rows[0];
-    console.log("[UPDATE JOB] Step 2 - Job status check. Current status:", job.status);
     
     if (job.status === "APPROVED" || job.status === "COMPLETED") {
-      console.log("[UPDATE JOB] Step 2a - FAILED: Job is finalized (status=" + job.status + ")");
       throw new AppError("Finalized jobs cannot be modified", 400, "JOB_FINALIZED");
     }
 
-    console.log("[UPDATE JOB] Step 3 - Authorization check. User role:", req.user.role, "User ID:", req.user.id, "Job engineer_id:", job.engineer_id);
     
     if (req.user.role === "engineer" && job.engineer_id !== req.user.id) {
-      console.log("[UPDATE JOB] Step 3a - FAILED: Engineer trying to update someone else's job");
       throw new AppError("Engineers can only update their own jobs", 403, "FORBIDDEN");
     }
 
-    console.log("[UPDATE JOB] Step 4 - Building UPDATE query. Request body keys:", Object.keys(req.body));
     
     const updates = [];
     const values = [];
@@ -803,15 +793,12 @@ app.put(
         updates.push(`${field} = $${index}`);
         const fieldValue = field === "job_data" ? req.body[field] : req.body[field];
         values.push(fieldValue);
-        console.log(`[UPDATE JOB] Step 4a - Added field '${field}' with value type:`, typeof fieldValue, "value:", JSON.stringify(fieldValue).substring(0, 100));
         index += 1;
       }
     }
 
-    console.log("[UPDATE JOB] Step 4b - Total fields to update:", updates.length);
     
     if (updates.length === 0) {
-      console.log("[UPDATE JOB] Step 4c - FAILED: No updatable fields provided");
       throw new AppError("No updatable fields were provided", 400, "NO_UPDATE_FIELDS");
     }
 
@@ -819,15 +806,11 @@ app.put(
     values.push(req.user.id);
     values.push(jobId);
 
-    console.log("[UPDATE JOB] Step 5 - Acquiring DB client");
     const client = await pool.connect();
-    console.log("[UPDATE JOB] Step 5a - Client acquired");
     
     try {
-      console.log("[UPDATE JOB] Step 5b - Starting transaction BEGIN");
       try {
         await client.query("BEGIN");
-        console.log("[UPDATE JOB] Step 5c - BEGIN transaction SUCCESS");
       } catch (err) {
         console.error("[FAILED QUERY] BEGIN transaction failed:");
         console.error(err.message);
@@ -835,16 +818,11 @@ app.put(
         throw err;
       }
 
-      console.log("[UPDATE JOB] Step 6 - Executing UPDATE job_master");
       const updateQuery = `UPDATE job_master SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING *`;
-      console.log("[UPDATE JOB] Step 6a - UPDATE query:", updateQuery.substring(0, 200) + "...");
-      console.log("[UPDATE JOB] Step 6b - UPDATE values count:", values.length, "values:", values.map((v, i) => `[$${i+1}]=${typeof v}`).join(", "));
       
       let updatedResult;
       try {
         updatedResult = await client.query(updateQuery, values);
-        console.log("[UPDATE JOB] Step 6c - UPDATE job_master SUCCESS. Rows affected:", updatedResult.rows.length);
-        console.log("[UPDATE JOB] Step 6d - Updated job:", JSON.stringify(updatedResult.rows[0] || null).substring(0, 200));
       } catch (err) {
         console.error("[FAILED QUERY] UPDATE job_master failed:");
         console.error(err.message);
@@ -856,14 +834,10 @@ app.put(
       
       const updatedJob = updatedResult.rows[0];
 
-      console.log("[UPDATE JOB] Step 7 - Checking if parts array provided");
       if (Array.isArray(req.body.parts)) {
-        console.log("[UPDATE JOB] Step 7a - Parts array found. Count:", req.body.parts.length);
         
-        console.log("[UPDATE JOB] Step 7b - DELETE FROM job_parts WHERE job_id=", jobId);
         try {
           await client.query("DELETE FROM job_parts WHERE job_id = $1", [jobId]);
-          console.log("[UPDATE JOB] Step 7c - DELETE job_parts SUCCESS");
         } catch (err) {
           console.error("[FAILED QUERY] DELETE job_parts failed:");
           console.error(err.message);
@@ -871,13 +845,10 @@ app.put(
           throw err;
         }
 
-        console.log("[UPDATE JOB] Step 7d - Inserting", req.body.parts.length, "parts");
         for (let partIdx = 0; partIdx < req.body.parts.length; partIdx++) {
           const part = req.body.parts[partIdx];
-          console.log(`[UPDATE JOB] Step 7e.${partIdx} - Processing part index ${partIdx}:`, JSON.stringify(part).substring(0, 100));
           
           const mappedPart = mapPart(part);
-          console.log(`[UPDATE JOB] Step 7f.${partIdx} - Mapped part:`, JSON.stringify(mappedPart));
           
           try {
             await client.query(
@@ -885,7 +856,6 @@ app.put(
                VALUES ($1, $2, $3, $4, $5)`,
               [jobId, mappedPart.part_name, mappedPart.quantity, mappedPart.unit_price, mappedPart.total]
             );
-            console.log(`[UPDATE JOB] Step 7g.${partIdx} - INSERT job_parts SUCCESS for part ${partIdx}`);
           } catch (err) {
             console.error(`[FAILED QUERY] INSERT job_parts failed at index ${partIdx}:`);
             console.error(err.message);
@@ -896,19 +866,13 @@ app.put(
             throw err;
           }
         }
-        console.log("[UPDATE JOB] Step 7h - All parts inserted successfully");
       } else {
-        console.log("[UPDATE JOB] Step 7i - No parts array in request body (or not an array)");
       }
 
-      console.log("[UPDATE JOB] Step 8 - Checking if labor array provided");
       if (Array.isArray(req.body.labor)) {
-        console.log("[UPDATE JOB] Step 8a - Labor array found. Count:", req.body.labor.length);
         
-        console.log("[UPDATE JOB] Step 8b - DELETE FROM job_labor WHERE job_id=", jobId);
         try {
           await client.query("DELETE FROM job_labor WHERE job_id = $1", [jobId]);
-          console.log("[UPDATE JOB] Step 8c - DELETE job_labor SUCCESS");
         } catch (err) {
           console.error("[FAILED QUERY] DELETE job_labor failed:");
           console.error(err.message);
@@ -916,13 +880,10 @@ app.put(
           throw err;
         }
 
-        console.log("[UPDATE JOB] Step 8d - Inserting", req.body.labor.length, "labor rows");
         for (let laborIdx = 0; laborIdx < req.body.labor.length; laborIdx++) {
           const laborRow = req.body.labor[laborIdx];
-          console.log(`[UPDATE JOB] Step 8e.${laborIdx} - Processing labor index ${laborIdx}:`, JSON.stringify(laborRow).substring(0, 100));
           
           const mappedLabor = mapLabor(laborRow);
-          console.log(`[UPDATE JOB] Step 8f.${laborIdx} - Mapped labor:`, JSON.stringify(mappedLabor));
           
           try {
             await client.query(
@@ -930,7 +891,6 @@ app.put(
                VALUES ($1, $2, $3, $4, $5)`,
               [jobId, mappedLabor.description, mappedLabor.hours, mappedLabor.rate, mappedLabor.total]
             );
-            console.log(`[UPDATE JOB] Step 8g.${laborIdx} - INSERT job_labor SUCCESS for labor ${laborIdx}`);
           } catch (err) {
             console.error(`[FAILED QUERY] INSERT job_labor failed at index ${laborIdx}:`);
             console.error(err.message);
@@ -941,15 +901,11 @@ app.put(
             throw err;
           }
         }
-        console.log("[UPDATE JOB] Step 8h - All labor rows inserted successfully");
       } else {
-        console.log("[UPDATE JOB] Step 8i - No labor array in request body (or not an array)");
       }
 
-      console.log("[UPDATE JOB] Step 9 - COMMIT transaction");
       try {
         await client.query("COMMIT");
-        console.log("[UPDATE JOB] Step 9a - COMMIT SUCCESS");
       } catch (err) {
         console.error("[FAILED QUERY] COMMIT failed:");
         console.error(err.message);
@@ -957,10 +913,8 @@ app.put(
         throw err;
       }
 
-      console.log("[UPDATE JOB] Step 10 - Calling logAuditEvent");
       try {
         logAuditEvent(req, "Job Update", "job", jobId, job, updatedJob);
-        console.log("[UPDATE JOB] Step 10a - logAuditEvent SUCCESS");
       } catch (err) {
         console.error("[FAILED] logAuditEvent failed:");
         console.error(err.message);
@@ -968,26 +922,16 @@ app.put(
         // Don't throw - audit is non-critical
       }
 
-      console.log("[UPDATE JOB] Step 11 - Sending success response");
-      console.log("[UPDATE JOB] ========== END PUT /jobs/:id HANDLER - SUCCESS ==========");
       return sendSuccess(res, updatedJob, "Job updated successfully");
     } catch (err) {
-      console.log("[UPDATE JOB] CATCH BLOCK ENTERED - Error occurred during transaction");
-      console.log("[UPDATE JOB] Error type:", err.constructor.name);
-      console.log("[UPDATE JOB] Error message:", err.message);
-      console.log("[UPDATE JOB] Error code:", err.code);
-      console.log("[UPDATE JOB] Error detail:", err.detail);
-      console.log("[UPDATE JOB] Error hint:", err.hint);
       
       console.error("PUT /jobs/:id FULL ERROR:");
       console.error(err);
       console.error(err.message);
       console.error(err.stack);
 
-      console.log("[UPDATE JOB] Attempting ROLLBACK");
       try {
         await client.query("ROLLBACK");
-        console.log("[UPDATE JOB] ROLLBACK SUCCESS");
       } catch (rollbackErr) {
         console.error("[UPDATE JOB] ROLLBACK FAILED:");
         console.error(rollbackErr.message);
@@ -1000,12 +944,9 @@ app.put(
         errorCode: err.code,
         errorDetail: err.detail
       });
-      console.log("[UPDATE JOB] ========== END PUT /jobs/:id HANDLER - ERROR ==========");
       throw err;
     } finally {
-      console.log("[UPDATE JOB] FINALLY BLOCK - Releasing client");
       client.release();
-      console.log("[UPDATE JOB] Client released");
     }
   })
 );
