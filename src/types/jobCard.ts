@@ -18,6 +18,11 @@ export interface CustomerInfo {
   contactNo: string;
   salesArea: SalesArea;
   engineerName: string;
+  equipmentModel: string;
+  equipmentBrandDescription: string;
+  equipmentPartNo: string;
+  equipmentSerialNo: string;
+  equipmentYear: string;
   underWarranty: boolean;
 }
 

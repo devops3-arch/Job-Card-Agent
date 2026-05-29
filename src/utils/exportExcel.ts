@@ -253,11 +253,11 @@ export function generateExcel(data: JobCardData) {
   setMerged(ws, "A9:E9", "EQUIPMENT DETAILS", sectionHeaderStyle);
   applyStyleToRange(ws, "F9:T9", sectionHeaderStyle);
 
-  setTriBlockRow(10, "MODEL", "", "TOTAL TRAVEL HRS", "", "SERVICE ENGINEER:", "");
-  setTriBlockRow(11, "BRAND DESCRIPTION", "", "TOTAL WORK HOURS", "", "EMPLOYEE CODE", "");
-  setTriBlockRow(12, "PART NO", "", "NO. OF VISIT", "1", "CUSTOMER P.O. Ref :", "");
-  setTriBlockRow(13, "SERIAL NO", "", "FOLLOW UP ACTIONS", "", "NETSUITE INVOICE NO:", "");
-  setTriBlockRow(14, "YEAR", "", "", "", "PENDING PAYMENT", "NETSUITE AGEING REPORT:");
+  setTriBlockRow(10, "MODEL", data.customerInfo.equipmentModel || "", "TOTAL TRAVEL HRS", "", "SERVICE ENGINEER:", "");
+  setTriBlockRow(11, "BRAND DESCRIPTION", data.customerInfo.equipmentBrandDescription || "", "TOTAL WORK HOURS", "", "EMPLOYEE CODE", "");
+  setTriBlockRow(12, "PART NO", data.customerInfo.equipmentPartNo || "", "NO. OF VISIT", "1", "CUSTOMER P.O. Ref :", "");
+  setTriBlockRow(13, "SERIAL NO", data.customerInfo.equipmentSerialNo || "", "FOLLOW UP ACTIONS", "", "NETSUITE INVOICE NO:", "");
+  setTriBlockRow(14, "YEAR", data.customerInfo.equipmentYear || "", "", "", "PENDING PAYMENT", "NETSUITE AGEING REPORT:");
 
   setMerged(ws, "A15:D15", "CHECKS PERFORMED\n(ENCLOSED DETAILED CHECKLIST)", sectionHeaderStyle);
   setMerged(ws, "E15:H15", "WORK REQUIRED", sectionHeaderStyle);

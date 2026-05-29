@@ -6,6 +6,7 @@ import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap } fr
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import CustomerInfoSection from "./CustomerInfoSection";
+import EquipmentDetailsSection from "./EquipmentDetailsSection";
 import ChecklistSection from "./ChecklistSection";
 import PartsLaborSection from "./PartsLaborSection";
 import CostingSection from "./CostingSection";
@@ -42,7 +43,13 @@ function removeUndefined(obj: Record<string, any>): Record<string, any> {
 
 const defaultCustomerInfo: CustomerInfo = {
   customerName: "", refNo: "", jobCardNo: "", date: new Date().toISOString().split("T")[0],
-  customerCode: "", attentionOf: "", email: "", contactNo: "", salesArea: "", engineerName: "", underWarranty: false
+  customerCode: "", attentionOf: "", email: "", contactNo: "", salesArea: "Dubai", engineerName: "",
+  equipmentModel: "",
+  equipmentBrandDescription: "",
+  equipmentPartNo: "",
+  equipmentSerialNo: "",
+  equipmentYear: "",
+  underWarranty: false
 };
 
 const sectionVariants = {
@@ -107,8 +114,13 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
                 attentionOf: jobData.attention_of || "",
                 email: jobData.email || "",
                 contactNo: jobData.contact_no || "",
-                salesArea: jobData.sales_area || "dubai",
+                salesArea: jobData.sales_area || "Dubai",
                 engineerName: jobData.engineer_name || "",
+                equipmentModel: jobData.equipment_model || storedJson.equipment_model || "",
+                equipmentBrandDescription: jobData.equipment_brand_description || storedJson.equipment_brand_description || "",
+                equipmentPartNo: jobData.equipment_part_no || storedJson.equipment_part_no || "",
+                equipmentSerialNo: jobData.equipment_serial_no || storedJson.equipment_serial_no || "",
+                equipmentYear: jobData.equipment_year || storedJson.equipment_year || "",
                 underWarranty: jobData.under_warranty || false
               });
 
@@ -396,6 +408,11 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       const jobPayload = removeUndefined({
         customer_name: customerInfo.customerName,
         equipment_name: "Compressor",
+        equipment_model: customerInfo.equipmentModel || undefined,
+        equipment_brand_description: customerInfo.equipmentBrandDescription || undefined,
+        equipment_part_no: customerInfo.equipmentPartNo || undefined,
+        equipment_serial_no: customerInfo.equipmentSerialNo || undefined,
+        equipment_year: customerInfo.equipmentYear || undefined,
         job_card_no: customerInfo.jobCardNo || undefined,
         job_date: customerInfo.date || undefined,
         ref_no: customerInfo.refNo || undefined,
@@ -653,6 +670,13 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         </motion.div>
 
         <motion.div custom={1} variants={sectionVariants} initial="hidden" animate="visible">
+          <EquipmentDetailsSection
+            data={customerInfo}
+            onChange={setCustomerInfo}
+          />
+        </motion.div>
+
+        <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible">
           <ChecklistSection
             title="Screw Air Compressor Checklist"
             items={compressorChecklist}
@@ -661,7 +685,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           />
         </motion.div>
 
-        <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible">
+        <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible">
           <ChecklistSection
             title="Air Dryer Checklist"
             items={dryerChecklist}
@@ -670,7 +694,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           />
         </motion.div>
 
-        <motion.div custom={3} variants={sectionVariants} initial="hidden" animate="visible">
+        <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible">
           <PartsLaborSection
             parts={parts}
             labor={labor}
@@ -681,7 +705,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         </motion.div>
 
         {role === 'manager' && (
-          <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible">
+          <motion.div custom={5} variants={sectionVariants} initial="hidden" animate="visible">
             <CostingSection
               parts={parts}
               labor={labor}
@@ -698,7 +722,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
 
         {/* Bottom Actions */}
         <motion.div
-          custom={5}
+          custom={6}
           variants={sectionVariants}
           initial="hidden"
           animate="visible"

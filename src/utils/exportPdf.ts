@@ -209,8 +209,8 @@ export async function generatePDF(data: JobCardData) {
     body: [
       ["ORG:", data.customerInfo.customerName, "DATE:", data.customerInfo.date],
       ["EMAIL:", data.customerInfo.email, "PAGE:", "1 of 1"],
-      ["TEL:", data.customerInfo.contactNo, "SUBJECT:", ""],
-      ["ATTN:", data.customerInfo.attentionOf, "MODEL:", ""],
+      ["TEL:", data.customerInfo.contactNo, "SUBJECT:", data.customerInfo.equipmentPartNo || ""],
+      ["ATTN:", data.customerInfo.attentionOf, "MODEL:", data.customerInfo.equipmentModel || ""],
       ["YOUR-REF:", data.customerInfo.refNo, "OUR-DOC:", data.customerInfo.jobCardNo],
     ],
   });
