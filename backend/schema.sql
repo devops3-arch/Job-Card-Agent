@@ -20,11 +20,18 @@ CREATE TABLE IF NOT EXISTS job_master (
     service_type TEXT,
     other_expenses NUMERIC DEFAULT 0,
     discount_percentage NUMERIC DEFAULT 0,
-    -- Status
-    status TEXT DEFAULT 'WAITING_PRICING',
+    engineer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    -- Status and audit
+    status TEXT DEFAULT 'DRAFT',
     created_by TEXT,
     updated_by TEXT,
     approved_by TEXT,
+    approved_by_id INTEGER,
+    approved_at TIMESTAMP,
+    deleted_at TIMESTAMP,
+    deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    delete_reason TEXT,
     -- JSONB backup columns (kept for compatibility)
     parts JSONB DEFAULT '[]',
     labor JSONB DEFAULT '[]',
@@ -91,6 +98,14 @@ ALTER TABLE job_master ADD COLUMN IF NOT EXISTS under_warranty BOOLEAN;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS service_type TEXT;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS other_expenses NUMERIC DEFAULT 0;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC DEFAULT 0;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS engineer_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'DRAFT';
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS approved_by_id INTEGER;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS delete_reason TEXT;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS parts JSONB DEFAULT '[]';
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS labor JSONB DEFAULT '[]';
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS compressor_checklist JSONB DEFAULT '[]';

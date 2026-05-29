@@ -2,15 +2,47 @@ import bcrypt from "bcryptjs";
 import pool from "../db.js";
 
 const demoUsers = [
+  // Engineers
   {
-    email: "engineer@example.com",
-    name: "Demo Engineer",
+    email: "bijmon@example.com",
+    name: "Bijmon Mathai",
     role: "engineer",
     password: "Password123!",
   },
   {
-    email: "manager@example.com",
-    name: "Demo Manager",
+    email: "sinoy@example.com",
+    name: "Sinoy Syamalan",
+    role: "engineer",
+    password: "Password123!",
+  },
+  {
+    email: "fasil@example.com",
+    name: "Fasil Musthafa",
+    role: "engineer",
+    password: "Password123!",
+  },
+  {
+    email: "sameer@example.com",
+    name: "Sameer Lambay",
+    role: "engineer",
+    password: "Password123!",
+  },
+  // Managers
+  {
+    email: "nitesh@example.com",
+    name: "Nitesh gawali",
+    role: "manager",
+    password: "Password123!",
+  },
+  {
+    email: "arvind@example.com",
+    name: "Arvind kumar Jaiswal",
+    role: "manager",
+    password: "Password123!",
+  },
+  {
+    email: "mohan@example.com",
+    name: "Mohan Krishnan",
     role: "manager",
     password: "Password123!",
   },

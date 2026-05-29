@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { ArrowUpRight, CheckCircle2, Clock, FileText, PlusCircle, Download, FileSpreadsheet, ChevronDown } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Download, FileSpreadsheet } from "lucide-react";
 import { Badge } from "./ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import JobCardForm from "./jobcard/JobCardForm";
 import PricingPanel from "./PricingPanel";
 import { generateGlobalPDF } from "@/utils/exportPdf";
@@ -19,17 +13,17 @@ import { MobileJobCard } from "./MobileJobCard";
 
 const getStatusBadge = (status: string) => {
     const s = (status ?? "").toUpperCase();
-    if (s === "WAITING_PRICING" || s.includes("SUBMIT"))
-        return <Badge className="bg-blue-50/80 text-blue-700 border border-blue-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Submitted</Badge>;
+    if (!s || s === "DRAFT")
+        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Draft</Badge>;
+    if (s === "WAITING_PRICING" || s === "PENDING_APPROVAL" || s.includes("SUBMIT") || s.includes("REVIEW") || s.includes("PEND"))
+        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Pending Approval</Badge>;
     if (s === "APPROVED" || s.includes("APPROV"))
         return <Badge className="bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Approved</Badge>;
     if (s === "REJECTED" || s.includes("REJECT"))
         return <Badge className="bg-red-50/80 text-red-700 border border-red-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Rejected</Badge>;
     if (s === "CLOSED")
         return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Closed</Badge>;
-    if (s.includes("REVIEW") || s.includes("PEND"))
-        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Under Review</Badge>;
-    return <Badge variant="outline" className="rounded-full shadow-sm">{status || "New"}</Badge>;
+    return <Badge variant="outline" className="rounded-full shadow-sm">{status}</Badge>;
 };
 
 const STAT_ANIMATION = {
@@ -40,16 +34,20 @@ const STAT_ANIMATION = {
     })
 };
 
-interface DashboardContentProps {
-    currentRole: string;
-    setCurrentRole: (role: any) => void;
-}
+interface DashboardContentProps {}
 
-const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps) => {
+const DashboardContent = ({}: DashboardContentProps) => {
     const [jobs, setJobs] = useState<any[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState<any>(null);
     const isMobile = useIsMobile();
+    const user = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
+    const userRole = user?.role || '';
+    const userId = user?.id;
+    const userName = user?.name || user?.fullName || "";
+
+    const getManagerName = (job: any) => job.manager_name || job.managerName || job.job_data?.manager_name || "—";
+    const getEngineerName = (job: any) => job.engineer_name || job.engineerName || job.job_data?.engineer_name || "—";
 
     useEffect(() => {
         const fetchJobs = () => {
@@ -66,22 +64,7 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
                 })
                 .catch(() => {
                     const localJobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-                    if (localJobs.length > 0) {
-                        setJobs(localJobs);
-                    } else {
-                        const fallback = [
-                            { id: "JOB-01007", job_card_no: "JOB-01007", customer_name: "hhhmm", engineer_name: "Vaibhav Singh", job_date: "20/04/2026", status: "Submitted", grand_total: "—" },
-                            { id: "JOB-01006", job_card_no: "JOB-01006", customer_name: "Barry", engineer_name: "Vaibhav Singh", job_date: "06/04/2026", status: "Approved", grand_total: "₹414.00" },
-                            { id: "JOB-01005", job_card_no: "JOB-01005", customer_name: "LarryBarry", engineer_name: "Vaibhav Singh", job_date: "06/04/2026", status: "Approved", grand_total: "₹447.72" },
-                            { id: "JOB-01004", job_card_no: "JOB-01004", customer_name: "CLASSIC METAL LLC", engineer_name: "Test Manager", job_date: "27/03/2026", status: "Under Review", grand_total: "₹354.90" },
-                            { id: "JOB-01003", job_card_no: "JOB-01003", customer_name: "Saanvi", engineer_name: "Test Manager", job_date: "26/03/2026", status: "Approved", grand_total: "₹335.79" },
-                            { id: "JOB-01002", job_card_no: "JOB-01002", customer_name: "bgfhbgf", engineer_name: "Bhanu", job_date: "25/03/2026", status: "Under Review", grand_total: "₹174.72" },
-                            { id: "JOB-01001", job_card_no: "JOB-01001", customer_name: "Dell", engineer_name: "Vaibhav Singh", job_date: "25/03/2026", status: "Approved", grand_total: "₹205.01" },
-                            { id: "JOB-01000", job_card_no: "JOB-01000", customer_name: "Bhanu", engineer_name: "Vaibhav Singh", job_date: "25/03/2026", status: "Approved", grand_total: "₹166.75" }
-                        ];
-                        localStorage.setItem('mockJobs', JSON.stringify(fallback));
-                        setJobs(fallback);
-                    }
+                    setJobs(Array.isArray(localJobs) ? localJobs : []);
                 });
         };
 
@@ -96,10 +79,6 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
         setIsFormOpen(true);
     };
 
-    const handleNewJob = () => {
-        setSelectedJob(null);
-        setIsFormOpen(true);
-    };
 
     const handleCloseForm = () => {
         setIsFormOpen(false);
@@ -119,20 +98,25 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
         window.dispatchEvent(new Event('jobsUpdated'));
     };
 
-    const totalJobs = jobs.length;
-    const submittedCount = jobs.filter(j => {
+    // Filter jobs based on user role
+    const visibleJobs = userRole === 'engineer'
+        ? jobs.filter(j => String(j.engineer_id) === String(userId) || j.engineer_name === userName)
+        : jobs;
+
+    const totalJobs = visibleJobs.length;
+    const submittedCount = visibleJobs.filter(j => {
         const s = (j.status ?? "").toUpperCase();
         return s === "WAITING_PRICING" || s.includes("SUBMIT");
     }).length;
-    const approvedCount = jobs.filter(j => (j.status ?? "").toUpperCase().includes("APPROV")).length;
-    const pendingCount = jobs.filter(j => {
+    const approvedCount = visibleJobs.filter(j => (j.status ?? "").toUpperCase().includes("APPROV")).length;
+    const pendingCount = visibleJobs.filter(j => {
         const s = (j.status ?? "").toUpperCase();
         return s.includes("REVIEW") || s.includes("PEND");
     }).length;
 
     const downloadGlobalPDF = async () => {
         try {
-            await generateGlobalPDF(jobs);
+            await generateGlobalPDF(visibleJobs);
         } catch (e) {
             console.error("PDF generation failed:", e);
         }
@@ -140,7 +124,7 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
 
     const downloadTableExcel = () => {
         const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(jobs);
+        const ws = XLSX.utils.json_to_sheet(visibleJobs);
         XLSX.utils.book_append_sheet(wb, ws, "Jobs");
         const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
         const blob = new Blob([wbout], { type: "application/octet-stream" });
@@ -171,16 +155,9 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
             <div className="p-1">
                 <div className="flex justify-between items-center mb-4 px-2">
                     <h1 className="text-xl font-bold text-slate-800">Dashboard</h1>
-                    <button
-                        onClick={handleNewJob}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg flex items-center gap-2 text-sm"
-                    >
-                        <PlusCircle size={18} />
-                        New Job
-                    </button>
                 </div>
                 <div className="mt-4">
-                    {jobs.map((job, index) => (
+                    {visibleJobs.map((job, index) => (
                         <motion.div
                             key={job.id || index}
                             initial={{ opacity: 0, y: 20 }}
@@ -215,23 +192,7 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
                             </h1>
                             <p className="text-sm font-medium text-slate-500 mt-1">Overview of your job cards</p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors border border-slate-200 outline-none text-sm">
-                                        {currentRole === 'manager' ? '👨‍💼 Manager' : '👷 Engineer'} <ChevronDown size={15} />
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => setCurrentRole('engineer')}>
-                                        👷 Engineer View
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setCurrentRole('manager')}>
-                                        👨‍💼 Manager View
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-
+                            <div className="flex flex-wrap items-center gap-2">
                             <button
                                 onClick={downloadGlobalPDF}
                                 className="bg-white hover:bg-slate-50 text-slate-700 px-3 py-2.5 rounded-lg flex items-center gap-1.5 font-medium transition-colors border border-slate-200 shadow-sm text-sm"
@@ -245,13 +206,6 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
                             >
                                 <FileSpreadsheet size={16} className="text-green-600" />
                                 <span className="hidden sm:inline">Excel</span>
-                            </button>
-                            <button
-                                onClick={handleNewJob}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors shadow-sm shadow-blue-200 text-sm"
-                            >
-                                <PlusCircle size={16} />
-                                New Job
                             </button>
                         </div>
                     </div>
@@ -300,6 +254,7 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
                                         <th className="px-6 py-4 whitespace-nowrap">Job #</th>
                                         <th className="px-6 py-4">Customer</th>
                                         <th className="px-6 py-4">Technician</th>
+                                        <th className="px-6 py-4">Manager</th>
                                         <th className="px-6 py-4">Date</th>
                                         <th className="px-6 py-4">Status</th>
                                         <th className="px-6 py-4 text-right">Total</th>
@@ -308,7 +263,7 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
                                 </thead>
                                 <tbody className="divide-y divide-slate-100/80 bg-white">
                                     <AnimatePresence>
-                                        {jobs.map((job, idx) => (
+                                        {visibleJobs.map((job, idx) => (
                                             <motion.tr 
                                                 key={job.id || idx}
                                                 initial={{ opacity: 0, x: -10 }}
@@ -322,9 +277,17 @@ const DashboardContent = ({ currentRole, setCurrentRole }: DashboardContentProps
                                                 <td className="px-6 py-4.5 text-slate-600">
                                                     <div className="flex items-center gap-2">
                                                         <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                                                            {(job.engineer_name || "—").substring(0,2).toUpperCase()}
+                                                            {(getEngineerName(job) || "—").substring(0,2).toUpperCase()}
                                                         </div>
-                                                        {job.engineer_name || "—"}
+                                                        {getEngineerName(job) || "—"}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4.5 text-slate-600">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                                                            {(getManagerName(job) || "—").substring(0,2).toUpperCase()}
+                                                        </div>
+                                                        {getManagerName(job) || "—"}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4.5 text-slate-500 font-medium">{job.job_date || "—"}</td>

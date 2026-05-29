@@ -12,6 +12,10 @@ const Index = () => {
     const [currentRole, setCurrentRole] = useState<'engineer' | 'manager' | 'users' | 'dashboard' | 'profile'>('dashboard');
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [managerEditJobId, setManagerEditJobId] = useState<number | null>(null);
+    
+    // Get user role to enforce role-based navigation
+    const user = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
+    const userRole = user?.role || '';
 
     // Listen for Edit Job events fired from PricingPanel
     useEffect(() => {
@@ -24,6 +28,10 @@ const Index = () => {
     }, []);
 
     const handleRoleChange = (role: 'engineer' | 'manager' | 'users' | 'dashboard' | 'profile') => {
+        // Enforce role-based navigation
+        if (userRole === 'engineer' && (role === 'manager' || role === 'users')) {
+            return; // Prevent engineers from accessing manager and users tabs
+        }
         setCurrentRole(role);
         setManagerEditJobId(null);
         setIsSheetOpen(false);

@@ -8,7 +8,12 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     const token = localStorage.getItem("authToken");
     const headers = new Headers(init.headers || {});
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+    const isFormData = init.body instanceof FormData;
+    const isUrlSearchParams = init.body instanceof URLSearchParams;
+    if (init.body && !headers.has("Content-Type") && !isFormData && !isUrlSearchParams) {
+        headers.set("Content-Type", "application/json");
+    }
 
     const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
     const res = await fetch(url, { ...init, headers });

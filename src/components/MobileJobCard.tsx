@@ -7,10 +7,12 @@ const getStatusBadge = (status: string) => {
         return <Badge className="bg-blue-50/80 text-blue-700 border border-blue-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Submitted</Badge>;
     } else if (s.includes('approve')) {
         return <Badge className="bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Approved</Badge>;
-    } else if (s.includes('review') || s.includes('reject') || s.includes('pend')) {
-        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Under Review</Badge>;
+    } else if (s.includes('review') || s.includes('pend')) {
+        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Pending Approval</Badge>;
+    } else if (s.includes('reject')) {
+        return <Badge className="bg-red-50/80 text-red-700 border border-red-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Rejected</Badge>;
     }
-    return <Badge variant="outline" className="rounded-full shadow-sm">{status || "New"}</Badge>;
+    return <Badge variant="outline" className="rounded-full shadow-sm">{status || "Draft"}</Badge>;
 };
 
 export const MobileJobCard = ({ job, index, onApprove }: { job: any, index: number, onApprove?: (jobId: string) => void }) => (
@@ -29,6 +31,9 @@ export const MobileJobCard = ({ job, index, onApprove }: { job: any, index: numb
             </div>
             <div className="mt-2 text-xs text-slate-500">
                 Assigned to: {job.engineer_name || "Unassigned"}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+                Manager: {job.manager_name || job.managerName || job.job_data?.manager_name || "Unassigned"}
             </div>
         </div>
         {onApprove && (

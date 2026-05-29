@@ -41,15 +41,25 @@ const handlePostgresError = (err) => {
 };
 
 const createErrorResponse = (err) => {
-  const response = {
+  if (err.errorCode === "FORBIDDEN" || err.statusCode === 403) {
+    return {
+      success: false,
+      error: {
+        code: "FORBIDDEN",
+        message: "You do not have permission to perform this action.",
+        details: [],
+      },
+    };
+  }
+
+  return {
     success: false,
-    message: err.message || "Internal server error",
     error: {
       code: err.errorCode || "INTERNAL_ERROR",
-      details: err.details || {},
+      message: err.message || "Internal server error",
+      details: Array.isArray(err.details) ? err.details : [],
     },
   };
-  return response;
 };
 
 const errorHandler = (err, req, res, next) => {

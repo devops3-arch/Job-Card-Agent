@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap } from "lucide-react";
@@ -12,6 +13,11 @@ import { defaultCompressorChecklist, defaultDryerChecklist } from "@/data/defaul
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
 import type { JobCardData, CustomerInfo, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
+
+interface UserOption {
+  id: number;
+  name: string;
+}
 
 // Safely extract a readable string from any backend error shape.
 function normalizeApiError(data: any): string {
@@ -62,10 +68,22 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
   const [labor, setLabor] = useState<LaborItem[]>([]);
   const [otherExpenses, setOtherExpenses] = useState(0);
   const [discountPercentage, setDiscountPercentage] = useState(0);
+  const [managerId, setManagerId] = useState<number | null>(null);
   const [managerName, setManagerName] = useState("");
+  const [engineerId, setEngineerId] = useState<number | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [loadingJob, setLoadingJob] = useState(!!jobId);
+  const [managers, setManagers] = useState<UserOption[]>([]);
+  const [engineers, setEngineers] = useState<UserOption[]>([]);
+  const [loadingManagers, setLoadingManagers] = useState(true);
+  const [loadingEngineers, setLoadingEngineers] = useState(true);
+  const [managersError, setManagersError] = useState<string | null>(null);
+  const [engineersError, setEngineersError] = useState<string | null>(null);
+  const currentUser = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
+  const currentUserRole = currentUser?.role || '';
+  const currentUserName = currentUser?.name || currentUser?.fullName || "";
+  const currentUserId = currentUser?.id;
 
   // Load existing job data if editing
   useEffect(() => {
@@ -137,6 +155,9 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               if (storedJson.dryer_checklist) setDryerChecklist(storedJson.dryer_checklist);
               
               if (jobData.status?.toUpperCase() === "APPROVED") setIsApproved(true);
+              if (jobData.manager_id) setManagerId(Number(jobData.manager_id));
+              if (jobData.engineer_id) setEngineerId(Number(jobData.engineer_id));
+              if (jobData.manager_name) setManagerName(jobData.manager_name);
               setLoadingJob(false);
               return;
             }
@@ -177,6 +198,72 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     }
   }, [jobId]);
 
+  useEffect(() => {
+    if (role === 'engineer' && currentUserRole === 'engineer') {
+      setEngineerId(currentUserId ?? null);
+      setCustomerInfo((prev) => ({
+        ...prev,
+        engineerName: prev.engineerName || currentUserName,
+      }));
+    }
+
+    const fetchList = async (
+      path: string,
+      setItems: Dispatch<SetStateAction<UserOption[]>>,
+      setLoading: Dispatch<SetStateAction<boolean>>,
+      setError: Dispatch<SetStateAction<string | null>>
+    ) => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const response = await apiFetch(path);
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data?.error?.message || data?.message || "Failed to load selection list");
+        }
+        setItems(Array.isArray(data.data) ? data.data : []);
+      } catch (error) {
+        console.error(`Failed to load ${path}:`, error);
+        setItems([]);
+        setError("Unable to load options");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchList("/users/managers", setManagers, setLoadingManagers, setManagersError);
+    fetchList("/users/engineers", setEngineers, setLoadingEngineers, setEngineersError);
+  }, []);
+
+  useEffect(() => {
+    if (managerId !== null && managers.length > 0) {
+      const match = managers.find((item) => item.id === managerId);
+      if (match) setManagerName(match.name);
+    }
+  }, [managerId, managers]);
+
+  useEffect(() => {
+    if (managerId === null && managerName && managers.length > 0) {
+      const match = managers.find((item) => item.name === managerName);
+      if (match) setManagerId(match.id);
+    }
+  }, [managerId, managerName, managers]);
+
+  useEffect(() => {
+    if (engineerId !== null && engineers.length > 0) {
+      const match = engineers.find((item) => item.id === engineerId);
+      if (match) setCustomerInfo((prev) => ({ ...prev, engineerName: match.name }));
+    }
+  }, [engineerId, engineers]);
+
+  useEffect(() => {
+    if (engineerId === null && customerInfo.engineerName && engineers.length > 0) {
+      const match = engineers.find((item) => item.name === customerInfo.engineerName);
+      if (match) setEngineerId(match.id);
+    }
+  }, [engineerId, customerInfo.engineerName, engineers]);
+
   // Track overall progress
   const totalChecklist = compressorChecklist.length + dryerChecklist.length;
   const doneChecklist = compressorChecklist.filter(i => i.status === 'done').length + dryerChecklist.filter(i => i.status === 'done').length;
@@ -193,7 +280,17 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
   }, [customerInfo, doneChecklist, parts.length]);
 
   const getFormData = (): JobCardData => ({
-    customerInfo, serviceType, compressorChecklist, dryerChecklist, parts, labor, otherExpenses, discountPercentage, managerName,
+    customerInfo,
+    serviceType,
+    compressorChecklist,
+    dryerChecklist,
+    parts,
+    labor,
+    otherExpenses,
+    discountPercentage,
+    managerName,
+    managerId: managerId ?? undefined,
+    engineerId: engineerId ?? undefined,
   });
 
   const validate = (): boolean => {
@@ -311,6 +408,8 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         contact_no: customerInfo.contactNo || undefined,
         other_expenses: Number(otherExpenses) || 0,
         discount_percentage: Number(discountPercentage) || 0,
+        manager_id: managerId ?? undefined,
+        engineer_id: engineerId ?? undefined,
         parts: sanitizedParts,
         labor: sanitizedLabor,
         job_data: {
@@ -532,7 +631,24 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
             onChange={setCustomerInfo}
             onServiceTypeChange={setServiceType}
             managerName={managerName}
-            onManagerNameChange={setManagerName}
+            managerId={managerId}
+            engineerId={engineerId}
+            managerOptions={managers}
+            engineerOptions={engineers}
+            managersLoading={loadingManagers}
+            engineersLoading={loadingEngineers}
+            managersError={managersError}
+            engineersError={engineersError}
+            engineerReadOnly={currentUserRole === 'engineer' && role === 'engineer'}
+            onManagerChange={(id, name) => {
+              setManagerId(id);
+              setManagerName(name);
+            }}
+            onEngineerChange={(id, name) => {
+              if (currentUserRole === 'engineer' && role === 'engineer') return;
+              setEngineerId(id);
+              setCustomerInfo((prev) => ({ ...prev, engineerName: name }));
+            }}
           />
         </motion.div>
 

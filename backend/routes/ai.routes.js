@@ -43,6 +43,17 @@ router.get(
     }
 
     const job = result.rows[0];
+
+    // Enforce strict ownership / assignment checks
+    if (req.user.role === "engineer" && job.engineer_id !== req.user.id) {
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+    }
+    if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
+    }
+
     const summary = await openAiService.generateJobSummary({ job });
 
     return res.status(200).json({
@@ -71,12 +82,22 @@ router.get(
       throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
     }
 
+    const job = jobResult.rows[0];
+
+    // Enforce strict ownership / assignment checks
+    if (req.user.role === "engineer" && job.engineer_id !== req.user.id) {
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+    }
+    if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
+    }
+
     const approvedDocumentResult = await pool.query(
       `SELECT id FROM approved_documents WHERE job_id = $1 ORDER BY version DESC LIMIT 1`,
       [jobId]
     );
-
-    const job = jobResult.rows[0];
     const hasApprovedDocument = approvedDocumentResult.rows.length > 0;
     const readiness = await openAiService.generatePdfReadiness({
       job,

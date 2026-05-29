@@ -59,6 +59,7 @@ export const getUserSignature = async (userId) => {
 };
 
 export const upsertUserSignature = async ({ userId, signature_url }) => {
+  console.log('[signatureService.upsertUserSignature] input:', { userId, signature_url });
   const result = await pool.query(
     `UPDATE users
      SET signature_url = $1, signature_uploaded_at = CURRENT_TIMESTAMP
@@ -66,5 +67,10 @@ export const upsertUserSignature = async ({ userId, signature_url }) => {
      RETURNING id, name, email, role, signature_url, signature_uploaded_at`,
     [signature_url, userId]
   );
+  console.log('[signatureService.upsertUserSignature] query result rows:', result.rows.length);
+  console.log('[signatureService.upsertUserSignature] returned row:', result.rows[0]);
+  if (result.rows.length === 0) {
+    console.error('[signatureService.upsertUserSignature] No rows updated for userId:', userId);
+  }
   return result.rows[0];
 };

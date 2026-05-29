@@ -66,4 +66,6 @@ export interface JobCardData {
   otherExpenses: number;
   discountPercentage: number;
   managerName?: string;
+  managerId?: number;
+  engineerId?: number;
 }

@@ -27,6 +27,13 @@ import aiRouter from "./routes/ai.routes.js";
 import * as openAiService from "./services/openai/index.js";
 import * as n8nService from "./services/n8n/index.js";
 import { specs } from "./docs/openapi.js";
+import * as pricingService from "./services/pricingService.js";
+import {
+  JOB_STATUSES,
+  canTransition,
+  normalizeStatus,
+  validateJobReadyForApproval,
+} from "./services/jobWorkflowService.js";
 import {
   loginSchema,
   refreshTokenSchema,
@@ -35,6 +42,7 @@ import {
   jobUpdateSchema,
   pricingSchema,
   statusUpdateSchema,
+  deleteJobSchema,
   userCreationSchema,
   signatureUploadSchema,
   pdfGenerationSchema,
@@ -72,16 +80,15 @@ app.use("/api/ai", aiRouter);
 const sendSuccess = (res, data, message = "Action completed successfully", statusCode = 200) =>
     res.status(statusCode).json({ success: true, message, data });
 
-const sendError = (res, statusCode, message, code = "INTERNAL_ERROR", details = {}) => {
-    const body = {
+const sendError = (res, statusCode, message, code = "INTERNAL_ERROR", details = []) => {
+    return res.status(statusCode).json({
         success: false,
-        message,
         error: {
             code,
-            details
-        }
-    };
-    return res.status(statusCode).json(body);
+            message,
+            details: Array.isArray(details) ? details : [],
+        },
+    });
 };
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -95,6 +102,27 @@ const isValidEmail = (email) =>
 
 const isValidDate = (d) =>
     d && !isNaN(Date.parse(d));
+
+const resolveUserIdByName = async (role, userName) => {
+  if (!userName || typeof userName !== "string") return null;
+  const res = await pool.query(
+    "SELECT id FROM users WHERE role = $1 AND LOWER(name) = LOWER($2) LIMIT 1",
+    [role, userName.trim()]
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+const resolveUserIdById = async (role, id) => {
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const res = await pool.query(
+    "SELECT id FROM users WHERE role = $1 AND id = $2 LIMIT 1",
+    [role, id]
+  );
+  return res.rows[0]?.id ?? null;
+};
+
+const resolveManagerIdByName = async (managerName) => resolveUserIdByName("manager", managerName);
+const resolveEngineerIdByName = async (engineerName) => resolveUserIdByName("engineer", engineerName);
 
 // Map frontend part object → job_parts row
 const mapPart = (p) => {
@@ -120,7 +148,6 @@ const mapLabor = (l) => {
     };
 };
 
-const ALLOWED_STATUSES = ["DRAFT", "WAITING_PRICING", "WAITING_APPROVAL", "APPROVED", "REJECTED", "COMPLETED"];
 const SYSTEM_USER = "system_user";
 
 // ─── Health checks ────────────────────────────────────────────────────────────
@@ -169,6 +196,28 @@ app.get("/health", async (req, res) => {
     environment: process.env.NODE_ENV
   });
 });
+
+app.get(
+  "/users/managers",
+  requireAuth,
+  asyncHandler(async (_req, res) => {
+    const result = await pool.query(
+      "SELECT id, name FROM users WHERE role = 'manager' ORDER BY name"
+    );
+    return sendSuccess(res, result.rows ?? []);
+  })
+);
+
+app.get(
+  "/users/engineers",
+  requireAuth,
+  asyncHandler(async (_req, res) => {
+    const result = await pool.query(
+      "SELECT id, name FROM users WHERE role = 'engineer' ORDER BY name"
+    );
+    return sendSuccess(res, result.rows ?? []);
+  })
+);
 
 /**
  * @swagger
@@ -380,6 +429,41 @@ app.post(
         return sendError(res, 400, "Equipment name is required");
     }
 
+    const managerIdPayload = req.body?.manager_id ?? req.body?.job_data?.manager_id;
+    const managerName = req.body?.manager_name || req.body?.job_data?.manager_name || null;
+    let manager_id = null;
+    if (managerIdPayload !== undefined && managerIdPayload !== null) {
+      const requestedManagerId = Number(managerIdPayload);
+      if (!Number.isInteger(requestedManagerId) || requestedManagerId <= 0) {
+        throw new AppError("manager_id must be a positive integer", 400, "INVALID_MANAGER_ID");
+      }
+      manager_id = await resolveUserIdById("manager", requestedManagerId);
+      if (!manager_id) {
+        throw new AppError("Selected manager not found", 400, "MANAGER_NOT_FOUND");
+      }
+    } else if (managerName) {
+      manager_id = await resolveManagerIdByName(managerName);
+      if (!manager_id) {
+        throw new AppError("Selected manager not found", 400, "MANAGER_NOT_FOUND");
+      }
+    }
+
+    const engineerIdPayload = req.body?.engineer_id ?? req.body?.job_data?.engineer_id;
+    let engineer_id = userId;
+    if (engineerIdPayload !== undefined && engineerIdPayload !== null) {
+      const requestedEngineerId = Number(engineerIdPayload);
+      if (!Number.isInteger(requestedEngineerId) || requestedEngineerId <= 0) {
+        throw new AppError("engineer_id must be a positive integer", 400, "INVALID_ENGINEER_ID");
+      }
+      if (req.user.role === "engineer" && requestedEngineerId !== req.user.id) {
+        throw new AppError("Engineers can only assign jobs to themselves", 403, "FORBIDDEN");
+      }
+      engineer_id = await resolveUserIdById("engineer", requestedEngineerId);
+      if (!engineer_id) {
+        throw new AppError("Selected engineer not found", 400, "ENGINEER_NOT_FOUND");
+      }
+    }
+
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
@@ -403,7 +487,8 @@ app.post(
             "labor",
             "job_data",
             "status",
-            "engineer_id"
+            "engineer_id",
+            "manager_id"
         ];
 
         const insertValues = [
@@ -424,8 +509,9 @@ app.post(
             JSON.stringify(safeParts),
             JSON.stringify(safeLabor),
             JSON.stringify(safeJobData),
-            "WAITING_PRICING",
-            userId
+            JOB_STATUSES.DRAFT,
+            userId,
+            manager_id
         ];
         
 
@@ -559,7 +645,7 @@ app.post(
  *                         type: string
  *                       status:
  *                         type: string
- *                         enum: [WAITING_PRICING, APPROVED, REJECTED, CLOSED]
+ *                         enum: [DRAFT, SUBMITTED, PENDING_APPROVAL, APPROVED, REJECTED, DELETED, COMPLETED]
  *                       created_at:
  *                         type: string
  *                         format: date-time
@@ -601,10 +687,19 @@ app.get(
                 jm.status,
                 jm.created_at,
                 jm.job_card_no,
+                jm.job_date,
                 jm.sales_area,
                 jm.service_type,
+                jm.engineer_id,
+                jm.manager_id,
+                eng.name AS engineer_name,
+                eng.name AS engineerName,
+                mgr.name AS manager_name,
+                mgr.name AS managerName,
                 ph.grand_total
              FROM job_master jm
+             LEFT JOIN users eng ON jm.engineer_id = eng.id
+             LEFT JOIN users mgr ON jm.manager_id = mgr.id
              LEFT JOIN pricing_header ph 
              ON jm.id = ph.job_id
         `;
@@ -612,8 +707,14 @@ app.get(
     let whereClause = '';
 
     if (req.user.role === "engineer") {
-      whereClause = ' WHERE jm.engineer_id = $3';
-      values.push(req.user.id);
+      whereClause = ' WHERE jm.engineer_id = $3 AND jm.status != $4';
+      values.push(req.user.id, JOB_STATUSES.DELETED);
+    } else if (req.user.role === "manager") {
+      whereClause = ' WHERE jm.manager_id = $3 AND jm.status != $4';
+      values.push(req.user.id, JOB_STATUSES.DELETED);
+    } else {
+      whereClause = ' WHERE jm.status != $3';
+      values.push(JOB_STATUSES.DELETED);
     }
 
     query += whereClause + ' ORDER BY jm.created_at DESC LIMIT $1 OFFSET $2';
@@ -697,7 +798,9 @@ app.get(
                 service_type,
                 under_warranty,
                 status,
-                job_data
+                job_data,
+                engineer_id,
+                manager_id
              FROM job_master
              WHERE id = $1`,
           [id]
@@ -707,13 +810,25 @@ app.get(
         throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
       }
 
+      const job = jobResult.rows[0];
+
+      // Enforce strict ownership / assignment checks
+      if (req.user.role === "engineer" && job.engineer_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
+      if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+        if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+          throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+        }
+      }
+
       const [partsResult, laborResult] = await Promise.all([
           client.query("SELECT * FROM job_parts WHERE job_id = $1 ORDER BY id", [id]),
           client.query("SELECT * FROM job_labor WHERE job_id = $1 ORDER BY id", [id])
       ]);
 
       return sendSuccess(res, {
-        job: jobResult.rows[0],
+        job,
         parts: partsResult.rows || [],
         labor: laborResult.rows || [],
       });
@@ -740,7 +855,7 @@ app.put(
     let jobResult;
     try {
       jobResult = await pool.query(
-        "SELECT id, status, engineer_id FROM job_master WHERE id = $1",
+        "SELECT id, status, engineer_id, manager_id FROM job_master WHERE id = $1",
         [jobId]
       );
     } catch (err) {
@@ -755,20 +870,79 @@ app.put(
     }
 
     const job = jobResult.rows[0];
-    
-    if (job.status === "APPROVED" || job.status === "COMPLETED") {
+    const currentStatus = normalizeStatus(job.status);
+
+    if ([JOB_STATUSES.APPROVED, JOB_STATUSES.COMPLETED, JOB_STATUSES.DELETED].includes(currentStatus)) {
       throw new AppError("Finalized jobs cannot be modified", 400, "JOB_FINALIZED");
     }
 
-    
+    // Enforce strict ownership / assignment checks before update
     if (req.user.role === "engineer" && job.engineer_id !== req.user.id) {
       throw new AppError("Engineers can only update their own jobs", 403, "FORBIDDEN");
     }
+    if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
+    }
 
-    
     const updates = [];
     const values = [];
     let index = 1;
+
+    const managerIdPayload = req.body?.manager_id ?? req.body?.job_data?.manager_id;
+    const managerNamePayload = req.body?.manager_name ?? req.body?.job_data?.manager_name;
+    if (managerIdPayload !== undefined || managerNamePayload !== undefined) {
+      if (managerIdPayload === null) {
+        updates.push(`manager_id = $${index}`);
+        values.push(null);
+        index += 1;
+      } else if (managerIdPayload !== undefined) {
+        const requestedManagerId = Number(managerIdPayload);
+        if (!Number.isInteger(requestedManagerId) || requestedManagerId <= 0) {
+          throw new AppError("manager_id must be a positive integer", 400, "INVALID_MANAGER_ID");
+        }
+        const resolvedManagerId = await resolveUserIdById("manager", requestedManagerId);
+        if (!resolvedManagerId) {
+          throw new AppError("Selected manager not found", 400, "MANAGER_NOT_FOUND");
+        }
+        updates.push(`manager_id = $${index}`);
+        values.push(resolvedManagerId);
+        index += 1;
+      } else {
+        const resolvedManagerId = await resolveManagerIdByName(managerNamePayload);
+        if (managerNamePayload && !resolvedManagerId) {
+          throw new AppError("Selected manager not found", 400, "MANAGER_NOT_FOUND");
+        }
+        updates.push(`manager_id = $${index}`);
+        values.push(resolvedManagerId);
+        index += 1;
+      }
+    }
+
+    const engineerIdPayload = req.body?.engineer_id ?? req.body?.job_data?.engineer_id;
+    if (engineerIdPayload !== undefined) {
+      if (engineerIdPayload === null) {
+        updates.push(`engineer_id = $${index}`);
+        values.push(null);
+        index += 1;
+      } else {
+        const requestedEngineerId = Number(engineerIdPayload);
+        if (!Number.isInteger(requestedEngineerId) || requestedEngineerId <= 0) {
+          throw new AppError("engineer_id must be a positive integer", 400, "INVALID_ENGINEER_ID");
+        }
+        if (req.user.role === "engineer" && requestedEngineerId !== req.user.id) {
+          throw new AppError("Engineers can only assign jobs to themselves", 403, "FORBIDDEN");
+        }
+        const resolvedEngineerId = await resolveUserIdById("engineer", requestedEngineerId);
+        if (!resolvedEngineerId) {
+          throw new AppError("Selected engineer not found", 400, "ENGINEER_NOT_FOUND");
+        }
+        updates.push(`engineer_id = $${index}`);
+        values.push(resolvedEngineerId);
+        index += 1;
+      }
+    }
 
     const allowedUpdateFields = [
       "customer_name",
@@ -1039,41 +1213,59 @@ app.post(
     }
 
     const jobCheck = await pool.query(
-      "SELECT id, status FROM job_master WHERE id = $1",
+      "SELECT id, status, engineer_id, manager_id, parts, labor FROM job_master WHERE id = $1",
       [jobId]
     );
     if (jobCheck.rows.length === 0) {
       throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
     }
-    if (jobCheck.rows[0].status === "APPROVED" || jobCheck.rows[0].status === "COMPLETED") {
-      throw new AppError("Cannot update pricing for a finalized job", 400, "JOB_FINALIZED");
+    const job = jobCheck.rows[0];
+    const currentStatus = normalizeStatus(job.status);
+    if ([JOB_STATUSES.APPROVED, JOB_STATUSES.COMPLETED, JOB_STATUSES.DELETED].includes(currentStatus)) {
+      throw new AppError("Cannot update pricing for a finalized or deleted job", 400, "JOB_FINALIZED");
+    }
+
+    // Enforce strict ownership / assignment checks before updating pricing
+    if (req.user.role === "engineer" && job.engineer_id !== req.user.id) {
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+    }
+    if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
     }
 
     const body = req.body ?? {};
+    const requiredPricingFields = [
+      "labour_rate",
+      "service_charge",
+      "discount",
+      "vat_percent",
+      "parts_total",
+      "labour_total",
+      "taxable_amount",
+    ];
+
+    const missingFields = requiredPricingFields.filter(
+      (field) => body[field] === undefined || body[field] === null
+    );
+    if (missingFields.length > 0) {
+      throw new AppError(
+        `Missing pricing payload fields: ${missingFields.join(", ")}`,
+        400,
+        "PRICING_PAYLOAD_INCOMPLETE",
+        missingFields.map((field) => ({ field, message: "Required pricing field is missing" }))
+      );
+    }
+
+    console.log('PRICING PAYLOAD', body);
     const labour_rate = toNum(body.labour_rate);
     const service_charge = toNum(body.service_charge);
     const discount = toNum(body.discount);
     const vat_percent = toNum(body.vat_percent, 5);
-    const parts_total = toNum(body.parts_total);
-    const labour_total = toNum(body.labour_total);
-    const taxable_amount = toNum(body.taxable_amount);
-    const vat_amount = toNum(body.vat_amount);
-    const grand_total = toNum(body.grand_total);
 
-    const numericFields = {
-      labour_rate,
-      service_charge,
-      discount,
-      parts_total,
-      labour_total,
-      taxable_amount,
-      vat_amount,
-      grand_total,
-    };
-    for (const [field, val] of Object.entries(numericFields)) {
-      if (val < 0) {
-        throw new AppError(`${field} cannot be negative`, 400, "INVALID_PRICING_VALUE");
-      }
+    if (labour_rate < 0 || service_charge < 0 || discount < 0 || vat_percent < 0) {
+      throw new AppError("Pricing values cannot be negative", 400, "INVALID_PRICING_VALUE");
     }
 
     const client = await pool.connect();
@@ -1086,7 +1278,58 @@ app.post(
       );
       const oldPricing = oldPricingResult.rows[0] ?? null;
 
+      const partsResult = await client.query(
+        "SELECT quantity, unit_price, total FROM job_parts WHERE job_id = $1",
+        [jobId]
+      );
+      const labourResult = await client.query(
+        "SELECT hours, rate, total FROM job_labor WHERE job_id = $1",
+        [jobId]
+      );
+
+      const parts = partsResult.rows.length > 0 ? partsResult.rows : Array.isArray(job.parts) ? job.parts : [];
+      const labour = labourResult.rows.length > 0 ? labourResult.rows : Array.isArray(job.labor) ? job.labor : [];
+
+      const computedPricing = pricingService.calculatePricingTotals({
+        parts,
+        labour,
+        serviceCharge: service_charge,
+        discountAmount: discount,
+        vatPercent: vat_percent,
+      });
+      // Round totals to 2 decimals before storing to avoid FP mismatches
+      const round2 = (v) => Math.round(Number(v || 0) * 100) / 100;
+
+      console.log('[POST /jobs/:id/pricing] pricing computation values:', {
+        subtotal: computedPricing.subtotal,
+        discount: computedPricing.discount_amount,
+        taxable_amount: computedPricing.taxable_amount,
+        vat_amount: computedPricing.vat_amount,
+        grand_total: computedPricing.grand_total,
+      });
+
       await client.query("DELETE FROM pricing_header WHERE job_id = $1", [jobId]);
+
+      const storedPricing = {
+        parts_total: round2(computedPricing.parts_total),
+        labour_total: round2(computedPricing.labour_total),
+        taxable_amount: round2(computedPricing.taxable_amount),
+        vat_amount: round2(computedPricing.vat_amount),
+        grand_total: round2(computedPricing.grand_total),
+      };
+
+      console.log('[POST /jobs/:id/pricing] insert values:', {
+        jobId,
+        labour_rate,
+        service_charge,
+        discount,
+        vat_percent,
+        parts_total: storedPricing.parts_total,
+        labour_total: storedPricing.labour_total,
+        taxable_amount: storedPricing.taxable_amount,
+        vat_amount: storedPricing.vat_amount,
+        grand_total: storedPricing.grand_total,
+      });
 
       const result = await client.query(
         `INSERT INTO pricing_header
@@ -1100,13 +1343,23 @@ app.post(
           service_charge,
           discount,
           vat_percent,
-          parts_total,
-          labour_total,
-          taxable_amount,
-          vat_amount,
-          grand_total,
+          storedPricing.parts_total,
+          storedPricing.labour_total,
+          storedPricing.taxable_amount,
+          storedPricing.vat_amount,
+          storedPricing.grand_total,
         ]
       );
+
+      console.log('[POST /jobs/:id/pricing] stored pricing row:', result.rows[0]);
+
+      const currentJobStatus = normalizeStatus(job.status);
+      if ([JOB_STATUSES.DRAFT, JOB_STATUSES.SUBMITTED].includes(currentJobStatus)) {
+        await client.query(
+          "UPDATE job_master SET status = $1, updated_at = CURRENT_TIMESTAMP, updated_by = $2 WHERE id = $3",
+          [JOB_STATUSES.PENDING_APPROVAL, req.user.id, jobId]
+        );
+      }
 
       await client.query("COMMIT");
       logAuditEvent(req, "Pricing Update", "pricing", jobId, oldPricing, result.rows[0]);
@@ -1137,7 +1390,33 @@ app.post(
 
       return sendSuccess(res, result.rows[0]);
     } catch (err) {
-      await client.query("ROLLBACK");
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        const reqLogger = req.logger || logger;
+        reqLogger.warn(
+          {
+            route: "/jobs/:id/pricing",
+            jobId,
+            rollbackError: rollbackError?.message,
+            originalError: err?.message,
+          },
+          "Pricing route rollback failed"
+        );
+      }
+
+      const reqLogger = req.logger || logger;
+      reqLogger.error(
+        {
+          route: "/jobs/:id/pricing",
+          jobId,
+          pricingPayload: req.body,
+          error: err?.message,
+          stack: err?.stack,
+        },
+        "Pricing route failure"
+      );
+
       throw err;
     } finally {
       client.release();
@@ -1171,7 +1450,7 @@ app.post(
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [WAITING_PRICING, APPROVED, REJECTED, CLOSED]
+ *                 enum: [DRAFT, SUBMITTED, PENDING_APPROVAL, APPROVED, REJECTED, DELETED, COMPLETED]
  *     responses:
  *       200:
  *         description: Job status updated
@@ -1216,7 +1495,7 @@ app.post(
 app.put(
   "/jobs/:id/status",
   requireAuth,
-  requireRole("manager"),
+  requireRole("engineer", "manager", "admin"),
   validate({ params: idParamSchema, body: statusUpdateSchema }),
   asyncHandler(async (req, res) => {
     const jobId = Number(req.params.id);
@@ -1224,21 +1503,19 @@ app.put(
       throw new AppError("Invalid job id", 400, "INVALID_JOB_ID");
     }
 
-    const { status } = req.body ?? {};
-    if (!status) {
+    console.log('[PUT /jobs/:id/status] request body:', JSON.stringify(req.body || {}));
+    console.log('[PUT /jobs/:id/status] auth user:', req.user ? { id: req.user.id, role: req.user.role } : null);
+
+    const requestedStatus = normalizeStatus(req.body?.status);
+    if (!requestedStatus) {
       throw new AppError("status is required", 400, "STATUS_REQUIRED");
     }
-    if (!ALLOWED_STATUSES.includes(status)) {
-      throw new AppError(
-        `status must be one of: ${ALLOWED_STATUSES.join(", ")}`,
-        400,
-        "INVALID_STATUS"
-      );
-    }
 
-    req.logger.info("Attempting job update", {
-      eventType: "job_update",
+    req.logger.info("Attempting job status update", {
+      eventType: "job_status_update",
       jobId,
+      requestedStatus,
+      userRole: req.user.role,
     });
 
     const client = await pool.connect();
@@ -1246,7 +1523,7 @@ app.put(
       await client.query("BEGIN");
 
       const jobResult = await client.query(
-        `SELECT id, status, engineer_id, customer_name, job_card_no, job_date,
+        `SELECT id, status, engineer_id, manager_id, customer_name, job_card_no, job_date,
                 ref_no, sales_area, service_type, under_warranty
          FROM job_master
          WHERE id = $1`,
@@ -1257,38 +1534,54 @@ app.put(
       }
 
       const job = jobResult.rows[0];
-      const currentStatus = job.status;
+      console.log('[PUT /jobs/:id/status] job lookup result:', job);
+      const currentStatus = normalizeStatus(job.status);
 
-      if (currentStatus === "APPROVED") {
-        throw new AppError("Approved jobs cannot be modified", 400, "JOB_APPROVED");
+      if (currentStatus === JOB_STATUSES.DELETED) {
+        throw new AppError("Deleted jobs cannot be modified", 400, "JOB_DELETED");
       }
 
-      if (currentStatus === "COMPLETED") {
+      if (requestedStatus === JOB_STATUSES.DELETED) {
         throw new AppError(
-          `Job is already ${currentStatus} and cannot be changed`,
+          "Use DELETE /jobs/:id to soft delete jobs",
           400,
-          "JOB_COMPLETED"
+          "INVALID_STATUS_TRANSITION"
         );
       }
 
+      if (!canTransition(currentStatus, requestedStatus, req.user.role)) {
+        throw new AppError(
+          `Cannot transition status from ${currentStatus} to ${requestedStatus}`,
+          400,
+          "INVALID_STATUS_TRANSITION"
+        );
+      }
+
+      if (requestedStatus === JOB_STATUSES.APPROVED) {
+        const approvalValidation = await validateJobReadyForApproval({ jobId, client, approverId: req.user.id });
+        if (!approvalValidation.success) {
+          throw new AppError(
+            approvalValidation.error.message,
+            400,
+            approvalValidation.error.code,
+            approvalValidation.error.details
+          );
+        }
+      }
+
       let pricingResult = null;
-      if (status === "APPROVED") {
+      if (requestedStatus === JOB_STATUSES.APPROVED) {
         pricingResult = await client.query(
           "SELECT * FROM pricing_header WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1",
           [jobId]
         );
+        console.log('[PUT /jobs/:id/status] pricing query result rows:', pricingResult.rows.length);
         if (pricingResult.rows.length === 0) {
           throw new AppError("Cannot approve job without pricing", 400, "MISSING_PRICING");
         }
-        if (toNum(pricingResult.rows[0].grand_total) <= 0) {
-          throw new AppError(
-            "Cannot approve job: grand_total must be greater than 0",
-            400,
-            "INVALID_PRICING_TOTAL"
-          );
-        }
 
         const manager = await signatureService.getUserSignature(req.user.id);
+        console.log('[PUT /jobs/:id/status] manager signature:', manager);
         if (!manager?.signature_url) {
           throw new AppError(
             "Manager signature is required for approval",
@@ -1300,9 +1593,10 @@ app.put(
         const engineer = job.engineer_id
           ? await signatureService.getUserSignature(job.engineer_id)
           : null;
+        console.log('[PUT /jobs/:id/status] engineer signature:', engineer);
 
         const approvalSnapshot = pdfGovernanceService.generateApprovalSnapshot({
-          job: { ...job, status },
+          job: { ...job, status: requestedStatus },
           pricing: pricingResult.rows[0],
           manager,
           engineer,
@@ -1333,34 +1627,36 @@ app.put(
       }
 
       const fields = ["status = $1", "updated_at = NOW()", "updated_by = $2"];
-      const values = [status, req.user.id];
-      if (status === "APPROVED") {
+      const values = [requestedStatus, req.user.id];
+      if (requestedStatus === JOB_STATUSES.APPROVED) {
         fields.push("approved_by_id = $3", "approved_at = CURRENT_TIMESTAMP");
         values.push(req.user.id);
       }
       values.push(jobId);
       const whereParam = values.length;
 
-      const updated = await client.query(
-        `UPDATE job_master SET ${fields.join(", ")} WHERE id = $${whereParam} RETURNING *`,
-        values
-      );
+      const updateQuery = `UPDATE job_master SET ${fields.join(", ")} WHERE id = $${whereParam} RETURNING *`;
+      console.log('[PUT /jobs/:id/status] executing update:', updateQuery, 'values:', values);
+      const updated = await client.query(updateQuery, values);
+      console.log('[PUT /jobs/:id/status] update result:', updated.rows[0]);
 
       await client.query("COMMIT");
 
-      const actionType = status === "APPROVED"
+      const actionType = requestedStatus === JOB_STATUSES.APPROVED
         ? "Job Approval"
-        : status === "COMPLETED"
+        : requestedStatus === JOB_STATUSES.COMPLETED
           ? "Job Closure"
-          : "Status Change";
+          : requestedStatus === JOB_STATUSES.DELETED
+            ? "Job Deletion"
+            : "Status Change";
 
-      logAuditEvent(req, actionType, "job", jobId, { status: currentStatus }, { status });
+      console.log('[PUT /jobs/:id/status] logging audit event:', { actionType, jobId, from: currentStatus, to: requestedStatus });
+      logAuditEvent(req, actionType, "job", jobId, { status: currentStatus }, { status: requestedStatus });
 
-      // Emit event and queue notifications (safe - doesn't break business logic)
       let eventType;
-      if (status === "APPROVED") {
+      if (requestedStatus === JOB_STATUSES.APPROVED) {
         eventType = eventService.EVENT_TYPES.JOB_APPROVED;
-      } else if (status === "COMPLETED") {
+      } else if (requestedStatus === JOB_STATUSES.COMPLETED) {
         eventType = eventService.EVENT_TYPES.JOB_CLOSED;
       }
 
@@ -1371,7 +1667,7 @@ app.put(
           entityId: jobId,
           payload: {
             previous_status: currentStatus,
-            new_status: status,
+            new_status: requestedStatus,
             customer_name: job.customer_name,
             job_card_no: job.job_card_no,
             sales_area: job.sales_area,
@@ -1385,9 +1681,10 @@ app.put(
         });
 
         if (event) {
-          const notificationType = status === "APPROVED"
+          const notificationType = requestedStatus === JOB_STATUSES.APPROVED
             ? eventService.NOTIFICATION_TYPES.JOB_APPROVED
             : eventService.NOTIFICATION_TYPES.JOB_CLOSED;
+          console.log('[PUT /jobs/:id/status] event emitted id:', event.id, 'notificationType:', notificationType, 'recipient:', job.engineer_id);
 
           await eventService.queueNotification({
             eventId: event.id,
@@ -1398,8 +1695,9 @@ app.put(
         }
       }
 
-      if (status === "APPROVED") {
-        const approvalJob = { ...job, status };
+      if (requestedStatus === JOB_STATUSES.APPROVED) {
+        const approvalJob = { ...job, status: requestedStatus };
+        console.log('[PUT /jobs/:id/status] preparing Zoho note and n8n payload');
         const zohoNote = await openAiService.generateZohoNote({
           job: approvalJob,
           pricing: pricingResult?.rows[0] ?? {},
@@ -1423,6 +1721,67 @@ app.put(
       }
 
       return sendSuccess(res, req.approvedDocument ? { ...updated.rows[0], approvedDocument: req.approvedDocument } : updated.rows[0]);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  })
+);
+
+app.delete(
+  "/jobs/:id",
+  requireAuth,
+  requireRole("manager", "admin"),
+  validate({ params: idParamSchema, body: deleteJobSchema }),
+  asyncHandler(async (req, res) => {
+    const jobId = Number(req.params.id);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      throw new AppError("Invalid job id", 400, "INVALID_JOB_ID");
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const jobResult = await client.query(
+        "SELECT id, status, engineer_id, manager_id FROM job_master WHERE id = $1",
+        [jobId]
+      );
+      if (jobResult.rows.length === 0) {
+        throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
+      }
+
+      const job = jobResult.rows[0];
+      const currentStatus = normalizeStatus(job.status);
+      if (currentStatus === JOB_STATUSES.DELETED) {
+        throw new AppError("Job is already deleted", 400, "JOB_ALREADY_DELETED");
+      }
+
+      if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+        if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+          throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+        }
+      }
+
+      await client.query(
+        `UPDATE job_master
+         SET status = $1,
+             deleted_at = CURRENT_TIMESTAMP,
+             deleted_by = $2,
+             delete_reason = $3,
+             updated_at = CURRENT_TIMESTAMP,
+             updated_by = $2
+         WHERE id = $4`,
+        [JOB_STATUSES.DELETED, req.user.id, req.body.delete_reason, jobId]
+      );
+
+      await client.query("COMMIT");
+
+      logAuditEvent(req, "Job Deletion", "job", jobId, { status: job.status }, { status: JOB_STATUSES.DELETED, delete_reason: req.body.delete_reason });
+
+      return sendSuccess(res, { id: jobId, status: JOB_STATUSES.DELETED });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -1868,21 +2227,34 @@ app.post(
 
     // Generate secure filename (preserve existing logic)
     const filename = generateSecureFilename(req.user.id, "signature", req.file.originalname);
+    console.log('[POST /signatures/manager] auth user:', { id: req.user.id, role: req.user.role, email: req.user.email });
+    console.log('[POST /signatures/manager] generated filename:', filename);
+    console.log('[POST /signatures/manager] file size:', req.file.size, 'bytes');
 
     // Upload file using storage service
     const uploadResult = await storageService.uploadFile(req.file.buffer, filename, "signature");
+    console.log('[POST /signatures/manager] uploadResult:', uploadResult);
+    console.log('[POST /signatures/manager] uploaded file path:', uploadResult.filepath);
+    console.log('[POST /signatures/manager] generated signature_url:', uploadResult.url);
     if (uploadResult.error) {
       throw new AppError(uploadResult.error, 400);
     }
 
     // Get existing signature for audit
     const existing = await signatureService.getUserSignature(req.user.id);
+    console.log('[POST /signatures/manager] existing signature:', existing);
 
     // Update user signature metadata
+    console.log('[POST /signatures/manager] calling upsertUserSignature with:', { userId: req.user.id, signature_url: uploadResult.url });
     const updated = await signatureService.upsertUserSignature({
       userId: req.user.id,
       signature_url: uploadResult.url,
     });
+    console.log('[POST /signatures/manager] upsertUserSignature result:', updated);
+    if (!updated) {
+      console.error('[POST /signatures/manager] DB update failed for user:', req.user.id);
+      throw new AppError('Failed to persist manager signature metadata', 500);
+    }
 
     if (process.env.NODE_ENV === "development") {
       req.logger.info("Manager signature uploaded", {
@@ -1894,7 +2266,7 @@ app.post(
     logAuditEvent(req, "Signature Upload", "user", req.user.id, {
       signature_url: existing?.signature_url ?? null,
     }, {
-      signature_url: updated.signature_url,
+      signature_url: updated?.signature_url ?? null,
       upload_path: uploadResult.filepath,
       file_size: req.file.size,
     });
@@ -1997,21 +2369,32 @@ app.post(
 
     // Generate secure filename (preserve existing logic)
     const filename = generateSecureFilename(req.user.id, "signature", req.file.originalname);
+    console.log('[POST /signatures/engineer] auth user:', { id: req.user.id, role: req.user.role, email: req.user.email });
+    console.log('[POST /signatures/engineer] generated filename:', filename);
+    console.log('[POST /signatures/engineer] file size:', req.file.size, 'bytes');
 
     // Upload file using storage service
     const uploadResult = await storageService.uploadFile(req.file.buffer, filename, "signature");
+    console.log('[POST /signatures/engineer] uploadResult:', uploadResult);
     if (uploadResult.error) {
       throw new AppError(uploadResult.error, 400);
     }
 
     // Get existing signature for audit
     const existing = await signatureService.getUserSignature(req.user.id);
+    console.log('[POST /signatures/engineer] existing signature:', existing);
 
     // Update user signature metadata
+    console.log('[POST /signatures/engineer] calling upsertUserSignature with:', { userId: req.user.id, signature_url: uploadResult.url });
     const updated = await signatureService.upsertUserSignature({
       userId: req.user.id,
       signature_url: uploadResult.url,
     });
+    console.log('[POST /signatures/engineer] upsertUserSignature result:', updated);
+    if (!updated) {
+      console.error('[POST /signatures/engineer] DB update failed for user:', req.user.id);
+      throw new AppError('Failed to persist engineer signature metadata', 500);
+    }
 
     if (process.env.NODE_ENV === "development") {
       req.logger.info("Engineer signature uploaded", {
@@ -2023,7 +2406,7 @@ app.post(
     logAuditEvent(req, "Signature Upload", "user", req.user.id, {
       signature_url: existing?.signature_url ?? null,
     }, {
-      signature_url: updated.signature_url,
+      signature_url: updated?.signature_url ?? null,
       upload_path: uploadResult.filepath,
       file_size: req.file.size,
     });
@@ -2059,6 +2442,26 @@ app.get(
   validate({ params: idParamSchema }),
   asyncHandler(async (req, res) => {
     const jobId = Number(req.params.id);
+
+    // Enforce strict ownership / assignment checks before getting approved documents
+    const jobResult = await pool.query(
+      "SELECT id, engineer_id, manager_id FROM job_master WHERE id = $1",
+      [jobId]
+    );
+    if (jobResult.rows.length === 0) {
+      throw new AppError("Job not found", 404, "JOB_NOT_FOUND");
+    }
+    const job = jobResult.rows[0];
+
+    if (req.user.role === "engineer" && job.engineer_id !== req.user.id) {
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+    }
+    if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
+    }
+
     const documents = await pdfGovernanceService.getApprovedDocumentsByJob(jobId);
     return sendSuccess(res, documents);
   })
@@ -2147,7 +2550,7 @@ app.post(
 
     // Verify job exists and user has access
     const jobResult = await pool.query(
-      "SELECT id, status, approved_by_id, approved_by FROM job_master WHERE id = $1",
+      "SELECT id, status, approved_by_id, approved_by, manager_id FROM job_master WHERE id = $1",
       [jobId]
     );
     if (jobResult.rows.length === 0) {
@@ -2155,6 +2558,14 @@ app.post(
     }
 
     const job = jobResult.rows[0];
+
+    // Enforce strict ownership / assignment checks before uploading approved documents
+    if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
+    }
+
     if (job.status !== "APPROVED") {
       throw new AppError("Job must be in APPROVED status to upload documents", 400);
     }

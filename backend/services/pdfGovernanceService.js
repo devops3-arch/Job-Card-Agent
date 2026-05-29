@@ -13,7 +13,7 @@ export const generateApprovalSnapshot = ({ job, pricing, manager, engineer, appr
       labour_total: pricing?.labour_total ?? null,
       taxable_amount: pricing?.taxable_amount ?? null,
       vat_amount: pricing?.vat_amount ?? null,
-      grand_total: pricing?.grand_total ?? null,
+      grand_total: pricing?.grand_total ?? pricing?.total_after_discount ?? null,
     },
     manager: {
       id: manager?.id ?? null,

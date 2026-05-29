@@ -56,6 +56,7 @@ export class StorageService {
   async uploadFile(buffer, filename, fileType, options = {}) {
     try {
       const result = await this.provider.uploadFile(buffer, filename, fileType, options);
+      console.log('[storageService.uploadFile] result:', { filename, fileType, url: result.url, filepath: result.filepath });
 
       logger.info("File uploaded successfully", {
         eventType: "storage",

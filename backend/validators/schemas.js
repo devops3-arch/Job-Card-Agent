@@ -24,12 +24,16 @@ const numericNonNegative = () =>
 
 const STATUS_VALUES = [
   "DRAFT",
-  "WAITING_PRICING",
-  "WAITING_APPROVAL",
+  "SUBMITTED",
+  "PENDING_APPROVAL",
   "APPROVED",
   "REJECTED",
+  "DELETED",
   "COMPLETED",
 ];
+
+const LEGACY_STATUS_VALUES = ["WAITING_PRICING", "WAITING_APPROVAL", "CLOSED"];
+const ALL_STATUS_VALUES = [...STATUS_VALUES, ...LEGACY_STATUS_VALUES];
 
 export const idParamSchema = z.object({
   id: z.coerce.number().int().positive({ message: "Id must be a positive integer" }),
@@ -85,6 +89,8 @@ export const jobCreationSchema = z
     contact_no: optionalTrimmedString(50),
     other_expenses: numericNonNegative().optional(),
     discount_percentage: numericNonNegative().optional(),
+    manager_id: z.coerce.number().int().positive({ message: "manager_id must be a positive integer" }).optional(),
+    engineer_id: z.coerce.number().int().positive({ message: "engineer_id must be a positive integer" }).optional(),
     parts: z.array(z.record(z.any())).optional(),
     labor: z.array(z.record(z.any())).optional(),
     job_data: z.record(z.any()).optional(),
@@ -107,6 +113,8 @@ export const jobUpdateSchema = z
     contact_no: optionalTrimmedString(50),
     other_expenses: numericNonNegative().optional(),
     discount_percentage: numericNonNegative().optional(),
+    manager_id: z.coerce.number().int().positive({ message: "manager_id must be a positive integer" }).optional(),
+    engineer_id: z.coerce.number().int().positive({ message: "engineer_id must be a positive integer" }).optional(),
     parts: z.array(z.record(z.any())).optional(),
     labor: z.array(z.record(z.any())).optional(),
     job_data: z.record(z.any()).optional(),
@@ -125,8 +133,8 @@ export const pricingSchema = z
     parts_total: numericNonNegative(),
     labour_total: numericNonNegative(),
     taxable_amount: numericNonNegative(),
-    vat_amount: numericNonNegative(),
-    grand_total: numericNonNegative(),
+    vat_amount: numericNonNegative().optional(),
+    grand_total: numericNonNegative().optional(),
   })
   .strict();
 
@@ -136,9 +144,15 @@ export const statusUpdateSchema = z
       .string()
       .trim()
       .min(1, "Status is required")
-      .refine((value) => STATUS_VALUES.includes(value), {
-        message: `Status must be one of: ${STATUS_VALUES.join(", ")}`,
+      .refine((value) => ALL_STATUS_VALUES.includes(value), {
+        message: `Status must be one of: ${ALL_STATUS_VALUES.join(", ")}`,
       }),
+  })
+  .strict();
+
+export const deleteJobSchema = z
+  .object({
+    delete_reason: z.string().trim().min(1, "Delete reason is required").max(500),
   })
   .strict();
 

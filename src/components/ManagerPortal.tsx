@@ -18,7 +18,9 @@ const STAT_ANIMATION = {
 
 const getStatusBadge = (status: string) => {
     const s = (status ?? "").toUpperCase();
-    if (s === "WAITING_PRICING" || s.includes("SUBMIT") || s.includes("REVIEW") || s.includes("PEND"))
+    if (!s || s === "DRAFT")
+        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Draft</Badge>;
+    if (s === "WAITING_PRICING" || s === "PENDING_APPROVAL" || s.includes("SUBMIT") || s.includes("REVIEW") || s.includes("PEND"))
         return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Pending Approval</Badge>;
     if (s === "APPROVED" || s.includes("APPROV"))
         return <Badge className="bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Approved</Badge>;
@@ -26,13 +28,25 @@ const getStatusBadge = (status: string) => {
         return <Badge className="bg-red-50/80 text-red-700 border border-red-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Rejected</Badge>;
     if (s === "CLOSED")
         return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Closed</Badge>;
-    return <Badge variant="outline" className="rounded-full shadow-sm">{status || "New"}</Badge>;
+    return <Badge variant="outline" className="rounded-full shadow-sm">{status}</Badge>;
 };
 
 const ManagerPortal = () => {
     const [jobs, setJobs] = useState<any[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState<any>(null);
+    const user = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
+    const userId = user?.id;
+    const userName = user?.name || user?.fullName || "";
+
+    const isPending = (s: string) => {
+        const status = (s ?? "").toUpperCase();
+        return !status || status === "DRAFT" || status === "WAITING_PRICING" || status === "PENDING_APPROVAL" || status.includes("SUBMIT") || status.includes("REVIEW") || status.includes("PEND");
+    };
+
+    const isAssignedJob = (job: any) => {
+        return String(job.manager_id) === String(userId) || String(job.manager_name) === String(userName) || String(job.managerName) === String(userName);
+    };
 
     useEffect(() => {
         const fetchJobs = () => {
@@ -50,22 +64,7 @@ const ManagerPortal = () => {
                 })
                 .catch(() => {
                     const localJobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-                    if (localJobs.length > 0) {
-                        setJobs(localJobs.sort((a: any, b: any) => new Date(b.job_date || b.date).getTime() - new Date(a.job_date || a.date).getTime()));
-                    } else {
-                        const fallback = [
-                            { id: "JOB-01007", job_card_no: "JOB-01007", customer_name: "hhhmm", engineer_name: "Vaibhav Singh", job_date: "20/04/2026", status: "Submitted", grand_total: "—" },
-                            { id: "JOB-01006", job_card_no: "JOB-01006", customer_name: "Barry", engineer_name: "Vaibhav Singh", job_date: "06/04/2026", status: "Approved", grand_total: "₹414.00" },
-                            { id: "JOB-01005", job_card_no: "JOB-01005", customer_name: "LarryBarry", engineer_name: "Vaibhav Singh", job_date: "06/04/2026", status: "Approved", grand_total: "₹447.72" },
-                            { id: "JOB-01004", job_card_no: "JOB-01004", customer_name: "CLASSIC METAL LLC", engineer_name: "Test Manager", job_date: "27/03/2026", status: "Under Review", grand_total: "₹354.90" },
-                            { id: "JOB-01003", job_card_no: "JOB-01003", customer_name: "Saanvi", engineer_name: "Test Manager", job_date: "26/03/2026", status: "Approved", grand_total: "₹335.79" },
-                            { id: "JOB-01002", job_card_no: "JOB-01002", customer_name: "bgfhbgf", engineer_name: "Bhanu", job_date: "25/03/2026", status: "Under Review", grand_total: "₹174.72" },
-                            { id: "JOB-01001", job_card_no: "JOB-01001", customer_name: "Dell", engineer_name: "Vaibhav Singh", job_date: "25/03/2026", status: "Approved", grand_total: "₹205.01" },
-                            { id: "JOB-01000", job_card_no: "JOB-01000", customer_name: "Bhanu", engineer_name: "Vaibhav Singh", job_date: "25/03/2026", status: "Approved", grand_total: "₹166.75" }
-                        ];
-                        localStorage.setItem('mockJobs', JSON.stringify(fallback));
-                        setJobs(fallback);
-                    }
+                    setJobs(Array.isArray(localJobs) ? localJobs.sort((a: any, b: any) => new Date(b.job_date || b.date).getTime() - new Date(a.job_date || a.date).getTime()) : []);
                 });
         };
 
@@ -75,14 +74,14 @@ const ManagerPortal = () => {
         return () => window.removeEventListener('jobsUpdated', listener);
     }, []);
 
-    const isPending = (s: string) => !s || s.toUpperCase() === 'WAITING_PRICING' || s.toLowerCase().includes('review') || s.toLowerCase().includes('submit');
-    const pendingJobs = jobs.filter(j => isPending(j.status)).length;
-    const approvedJobs = jobs.filter(j => j.status?.toLowerCase().includes('approve')).length;
+    const visibleJobs = jobs.filter(isAssignedJob);
+    const pendingJobs = visibleJobs.filter(j => isPending(j.status)).length;
+    const approvedJobs = visibleJobs.filter(j => (j.status ?? "").toUpperCase().includes('APPROV')).length;
 
     const statCards = [
         { title: "To Approve", value: pendingJobs.toString(), icon: <Activity className="text-amber-500" size={22} />, gradient: "from-amber-500/20 to-orange-500/5", border: "border-amber-200/50" },
         { title: "Approved", value: approvedJobs.toString(), icon: <CheckCircle2 className="text-emerald-500" size={22} />, gradient: "from-emerald-500/20 to-teal-500/5", border: "border-emerald-200/50" },
-        { title: "Total Jobs", value: jobs.length.toString(), icon: <FileText className="text-blue-500" size={22} />, gradient: "from-blue-500/20 to-indigo-500/5", border: "border-blue-200/50" }
+        { title: "Total Jobs", value: visibleJobs.length.toString(), icon: <FileText className="text-blue-500" size={22} />, gradient: "from-blue-500/20 to-indigo-500/5", border: "border-blue-200/50" }
     ];
 
     const updateJobStatus = (jobId: string, status: 'APPROVED' | 'REJECTED') => {
@@ -182,12 +181,10 @@ const ManagerPortal = () => {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white/80 p-4 sm:p-6 rounded-2xl shadow-[0_2px_10px_rgb(0,0,0,0.02)] border border-slate-200/60 backdrop-blur-xl mb-8">
                 <div>
                     <h1 className="text-xl sm:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-600">
-                        Manager Actions
-                    </h1>
-                    <p className="text-sm font-medium text-slate-500 mt-1">Review and approve job cards</p>
+                                Assigned Job Cards
+                            </h1>
+                            <p className="text-sm font-medium text-slate-500 mt-1">Jobs assigned to your manager account</p>
                 </div>
-            </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
                 {statCards.map((stat, i) => (
                     <motion.div 
@@ -204,6 +201,7 @@ const ManagerPortal = () => {
                         </div>
                     </motion.div>
                 ))}
+            </div>
             </div>
 
             {/* Mobile card layout */}
@@ -232,31 +230,33 @@ const ManagerPortal = () => {
                                     <span className="text-slate-400">·</span>
                                     <span className="font-semibold text-slate-700">{job.id || `JOB-${1000 + index}`}</span>
                                 </div>
-                                <div className="flex gap-2 pt-3 border-t border-slate-100">
-                                    <button
-                                        onClick={() => handleReviewJob(job)}
-                                        className="flex-1 bg-white hover:bg-slate-50 text-slate-700 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm border border-slate-200 active:scale-95 min-h-[44px]"
-                                    >
-                                        Review
-                                    </button>
-                                    <button
-                                        onClick={() => updateJobStatus(job.id, 'REJECTED')}
-                                        className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm shadow-red-500/20 active:scale-95 min-h-[44px]"
-                                    >
-                                        Reject
-                                    </button>
-                                    <button
-                                        onClick={() => approveJob(job.id)}
-                                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm shadow-emerald-500/20 active:scale-95 min-h-[44px]"
-                                    >
-                                        Approve
-                                    </button>
-                                </div>
+                                {isPending(job.status) && (
+                                    <div className="flex gap-2 pt-3 border-t border-slate-100">
+                                        <button
+                                            onClick={() => handleReviewJob(job)}
+                                            className="flex-1 bg-white hover:bg-slate-50 text-slate-700 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm border border-slate-200 active:scale-95 min-h-[44px]"
+                                        >
+                                            Review
+                                        </button>
+                                        <button
+                                            onClick={() => updateJobStatus(job.id, 'REJECTED')}
+                                            className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm shadow-red-500/20 active:scale-95 min-h-[44px]"
+                                        >
+                                            Reject
+                                        </button>
+                                        <button
+                                            onClick={() => approveJob(job.id)}
+                                            className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm shadow-emerald-500/20 active:scale-95 min-h-[44px]"
+                                        >
+                                            Approve
+                                        </button>
+                                    </div>
+                                )}
                             </motion.div>
                         ))}
                     </AnimatePresence>
-                    {jobs.filter(j => isPending(j.status)).length === 0 && (
-                        <p className="text-center text-slate-500 font-medium py-8">No pending jobs to approve.</p>
+                    {visibleJobs.length === 0 && (
+                        <p className="text-center text-slate-500 font-medium py-8">No assigned job cards found.</p>
                     )}
                 </div>
             ) : (
@@ -275,7 +275,7 @@ const ManagerPortal = () => {
                             </thead>
                             <tbody>
                                 <AnimatePresence>
-                                    {jobs.filter(j => isPending(j.status)).map((job, index) => (
+                                    {visibleJobs.map((job, index) => (
                                         <motion.tr
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
@@ -323,10 +323,10 @@ const ManagerPortal = () => {
                                         </motion.tr>
                                     ))}
                                 </AnimatePresence>
-                                {jobs.filter(j => isPending(j.status)).length === 0 && (
+                                {visibleJobs.length === 0 && (
                                     <tr>
                                         <td colSpan={5} className="p-8 text-center text-slate-500 font-medium">
-                                            No pending jobs to approve.
+                                            No assigned job cards found.
                                         </td>
                                     </tr>
                                 )}

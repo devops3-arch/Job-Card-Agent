@@ -11,8 +11,13 @@ ALTER COLUMN equipment_name DROP NOT NULL;
 
 -- Add authentication-related columns
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS engineer_id INTEGER;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS approved_by_id INTEGER;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS delete_reason TEXT;
+ALTER TABLE job_master ALTER COLUMN status SET DEFAULT 'DRAFT';
 
 -- Add user signature metadata for approval workflows
 ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_uploaded_at TIMESTAMP;

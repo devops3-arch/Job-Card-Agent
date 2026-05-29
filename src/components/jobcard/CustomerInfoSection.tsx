@@ -6,13 +6,28 @@ import { CustomerInfo, ServiceType, SalesArea } from "@/types/jobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { sampleCustomers } from "@/data/defaultChecklist";
 
+interface UserOption {
+  id: number;
+  name: string;
+}
+
 interface Props {
   data: CustomerInfo;
   serviceType: ServiceType;
   onChange: (data: CustomerInfo) => void;
   onServiceTypeChange: (type: ServiceType) => void;
   managerName: string;
-  onManagerNameChange: (name: string) => void;
+  managerId: number | null;
+  engineerId: number | null;
+  managerOptions: UserOption[];
+  engineerOptions: UserOption[];
+  managersLoading: boolean;
+  engineersLoading: boolean;
+  managersError?: string | null;
+  engineersError?: string | null;
+  engineerReadOnly?: boolean;
+  onManagerChange: (id: number | null, name: string) => void;
+  onEngineerChange: (id: number | null, name: string) => void;
 }
 
 const serviceTypes: { value: ServiceType; label: string; emoji: string }[] = [
@@ -32,7 +47,24 @@ const fieldVariants = {
 
 const inputClass = "h-11 rounded-xl border-border/60 bg-background hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all duration-300";
 
-const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange, managerName, onManagerNameChange }: Props) => {
+const CustomerInfoSection = ({
+  data,
+  serviceType,
+  onChange,
+  onServiceTypeChange,
+  managerName,
+  managerId,
+  engineerId,
+  managerOptions,
+  engineerOptions,
+  managersLoading,
+  engineersLoading,
+  managersError,
+  engineersError,
+  engineerReadOnly,
+  onManagerChange,
+  onEngineerChange,
+}: Props) => {
   const update = (field: keyof CustomerInfo, value: string) => {
     onChange({ ...data, [field]: value });
   };
@@ -99,26 +131,56 @@ const CustomerInfoSection = ({ data, serviceType, onChange, onServiceTypeChange,
                 </SelectContent>
               </Select>
             ) : f.type === "engineerName" ? (
-              <Select value={data.engineerName} onValueChange={(v) => update("engineerName", v)}>
-                <SelectTrigger className={inputClass}>
-                  <SelectValue placeholder="Select engineer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Bijmon Mathai">Bijmon Mathai</SelectItem>
-                  <SelectItem value="Sinoy Syamalan">Sinoy Syamalan</SelectItem>
-                  <SelectItem value="Fasil Musthafa">Fasil Musthafa</SelectItem>
-                  <SelectItem value="Sameer Lambay">Sameer Lambay</SelectItem>
-                </SelectContent>
-              </Select>
+              engineerReadOnly ? (
+                <Input
+                  className={inputClass}
+                  value={data.engineerName || ""}
+                  disabled
+                  placeholder="Engineer assigned"
+                />
+              ) : (
+                <Select value={engineerId ? String(engineerId) : ""} onValueChange={(value) => {
+                  const selected = engineerOptions.find((item) => String(item.id) === value);
+                  onEngineerChange(selected?.id ?? null, (selected?.name ?? data.engineerName) || "");
+                }}>
+                  <SelectTrigger className={inputClass}>
+                    <SelectValue placeholder={data.engineerName ? data.engineerName : "Select engineer"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {engineersLoading ? (
+                      <SelectItem value="unassigned" disabled>Loading engineers...</SelectItem>
+                    ) : engineersError ? (
+                      <SelectItem value="unassigned" disabled>Failed to load engineers</SelectItem>
+                    ) : engineerOptions.length === 0 ? (
+                      <SelectItem value="unassigned" disabled>No engineers found</SelectItem>
+                    ) : (
+                      engineerOptions.map((engineer) => (
+                        <SelectItem key={engineer.id} value={String(engineer.id)}>{engineer.name}</SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              )
             ) : f.type === "managerName" ? (
-              <Select value={managerName} onValueChange={onManagerNameChange}>
+              <Select value={managerId ? String(managerId) : ""} onValueChange={(value) => {
+                const selected = managerOptions.find((item) => String(item.id) === value);
+                onManagerChange(selected?.id ?? null, (selected?.name ?? managerName) || "");
+              }}>
                 <SelectTrigger className={inputClass}>
-                  <SelectValue placeholder="Select manager" />
+                  <SelectValue placeholder={managerName ? managerName : "Select manager"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Nitesh gawali">Nitesh Gawali</SelectItem>
-                  <SelectItem value="Arvind kumar Jaiswal">Arvind Kumar Jaiswal</SelectItem>
-                  <SelectItem value="Mohan Krishnan">Mohan Krishnan</SelectItem>
+                  {managersLoading ? (
+                    <SelectItem value="unassigned" disabled>Loading managers...</SelectItem>
+                  ) : managersError ? (
+                    <SelectItem value="unassigned" disabled>Failed to load managers</SelectItem>
+                  ) : managerOptions.length === 0 ? (
+                    <SelectItem value="unassigned" disabled>No managers found</SelectItem>
+                  ) : (
+                    managerOptions.map((manager) => (
+                      <SelectItem key={manager.id} value={String(manager.id)}>{manager.name}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             ) : f.icon ? (

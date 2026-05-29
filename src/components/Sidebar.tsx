@@ -23,9 +23,18 @@ const handleSignOut = () => {
 
 const Sidebar = ({ currentRole = 'dashboard', onRoleChange, isMobile = false }: SidebarProps) => {
     const user = getUser();
+    const userRole = user?.role || '';
     const displayName = user?.fullName || user?.name || user?.email?.split("@")[0] || "User";
     const displayEmail = user?.email || "";
     const initials = displayName.substring(0, 2).toUpperCase();
+
+    // Role-based tab visibility
+    const navItems = [
+        { role: 'dashboard' as const, icon: LayoutDashboard, label: 'Dashboard', visible: true },
+        { role: 'engineer' as const, icon: PlusCircle, label: 'New Job', visible: userRole === 'engineer' },
+        { role: 'manager' as const, icon: UserCog, label: 'Assigned Job Cards', visible: userRole === 'manager' },
+        { role: 'users' as const, icon: Users, label: 'Users', visible: userRole === 'manager' },
+    ].filter(item => item.visible);
 
     return (
         <aside className={`w-[280px] bg-slate-900/95 backdrop-blur-xl text-white ${isMobile ? 'flex' : 'hidden md:flex'} flex-col h-[calc(100vh-24px)] shrink-0 rounded-3xl my-3 ml-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] py-6 z-50 border border-white/10 relative overflow-hidden`}>
@@ -43,12 +52,7 @@ const Sidebar = ({ currentRole = 'dashboard', onRoleChange, isMobile = false }: 
 
             {/* Navigation */}
             <nav className="flex-1 px-4 space-y-1.5 mt-2 overflow-y-auto custom-scrollbar">
-                {[
-                    { role: 'dashboard' as const, icon: LayoutDashboard, label: 'Dashboard' },
-                    { role: 'engineer' as const, icon: PlusCircle, label: 'New Job' },
-                    { role: 'manager' as const, icon: UserCog, label: 'Manager' },
-                    { role: 'users' as const, icon: Users, label: 'Users' },
-                ].map(({ role, icon: Icon, label }) => (
+                {navItems.map(({ role, icon: Icon, label }) => (
                     <button
                         key={role}
                         onClick={() => onRoleChange && onRoleChange(role)}

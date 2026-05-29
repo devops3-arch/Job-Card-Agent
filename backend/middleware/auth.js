@@ -82,11 +82,19 @@ export const requireRole = (...allowedRoles) => {
     if (!req.user) {
       throw new AppError("Authentication required", 401, "AUTH_REQUIRED");
     }
-    if (!allowedRoles.includes(req.user.role)) {
+    // Flatten roles to support both array parameters requireRole(['role1']) and requireRole('role1', 'role2')
+    const roles = allowedRoles.flat();
+
+    // Admin has full access
+    if (req.user.role === "admin") {
+      return next();
+    }
+
+    if (!roles.includes(req.user.role)) {
       logAuditEvent(req, "Unauthorized Access Attempt", "auth", null, {
         role: req.user.role,
       }, {
-        requiredRoles: allowedRoles,
+        requiredRoles: roles,
         endpoint: req.originalUrl,
         method: req.method,
       });
