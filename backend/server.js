@@ -390,6 +390,11 @@ app.post(
     // Safe field extraction - no validation beyond existence
     const customer_name = req.body?.customer_name || null;
     const equipment_name = req.body?.equipment_name || null;
+    const equipment_model = req.body?.equipment_model || null;
+    const equipment_brand_description = req.body?.equipment_brand_description || null;
+    const equipment_part_no = req.body?.equipment_part_no || null;
+    const equipment_serial_no = req.body?.equipment_serial_no || null;
+    const equipment_year = req.body?.equipment_year || null;
     const job_card_no = req.body?.job_card_no || null;
     const job_date = req.body?.job_date || null;
     const ref_no = req.body?.ref_no || null;
@@ -471,6 +476,11 @@ app.post(
         const columns = [
             "customer_name",
             "equipment_name",
+            "equipment_model",
+            "equipment_brand_description",
+            "equipment_part_no",
+            "equipment_serial_no",
+            "equipment_year",
             "job_card_no",
             "job_date",
             "ref_no",
@@ -494,6 +504,11 @@ app.post(
         const insertValues = [
             customer_name,
             equipment_name,
+            equipment_model,
+            equipment_brand_description,
+            equipment_part_no,
+            equipment_serial_no,
+            equipment_year,
             job_card_no,
             job_date,
             ref_no,
@@ -684,6 +699,11 @@ app.get(
                 jm.id,
                 jm.customer_name,
                 jm.equipment_name,
+                jm.equipment_model,
+                jm.equipment_brand_description,
+                jm.equipment_part_no,
+                jm.equipment_serial_no,
+                jm.equipment_year,
                 jm.status,
                 jm.created_at,
                 jm.job_card_no,
@@ -787,6 +807,11 @@ app.get(
                 id,
                 customer_name,
                 equipment_name,
+                equipment_model,
+                equipment_brand_description,
+                equipment_part_no,
+                equipment_serial_no,
+                equipment_year,
                 job_card_no,
                 job_date,
                 ref_no,
@@ -947,6 +972,11 @@ app.put(
     const allowedUpdateFields = [
       "customer_name",
       "equipment_name",
+      "equipment_model",
+      "equipment_brand_description",
+      "equipment_part_no",
+      "equipment_serial_no",
+      "equipment_year",
       "job_card_no",
       "job_date",
       "ref_no",
@@ -1258,7 +1288,6 @@ app.post(
       );
     }
 
-    console.log('PRICING PAYLOAD', body);
     const labour_rate = toNum(body.labour_rate);
     const service_charge = toNum(body.service_charge);
     const discount = toNum(body.discount);
@@ -1300,13 +1329,6 @@ app.post(
       // Round totals to 2 decimals before storing to avoid FP mismatches
       const round2 = (v) => Math.round(Number(v || 0) * 100) / 100;
 
-      console.log('[POST /jobs/:id/pricing] pricing computation values:', {
-        subtotal: computedPricing.subtotal,
-        discount: computedPricing.discount_amount,
-        taxable_amount: computedPricing.taxable_amount,
-        vat_amount: computedPricing.vat_amount,
-        grand_total: computedPricing.grand_total,
-      });
 
       await client.query("DELETE FROM pricing_header WHERE job_id = $1", [jobId]);
 
@@ -1318,18 +1340,6 @@ app.post(
         grand_total: round2(computedPricing.grand_total),
       };
 
-      console.log('[POST /jobs/:id/pricing] insert values:', {
-        jobId,
-        labour_rate,
-        service_charge,
-        discount,
-        vat_percent,
-        parts_total: storedPricing.parts_total,
-        labour_total: storedPricing.labour_total,
-        taxable_amount: storedPricing.taxable_amount,
-        vat_amount: storedPricing.vat_amount,
-        grand_total: storedPricing.grand_total,
-      });
 
       const result = await client.query(
         `INSERT INTO pricing_header
@@ -1351,7 +1361,6 @@ app.post(
         ]
       );
 
-      console.log('[POST /jobs/:id/pricing] stored pricing row:', result.rows[0]);
 
       const currentJobStatus = normalizeStatus(job.status);
       if ([JOB_STATUSES.DRAFT, JOB_STATUSES.SUBMITTED].includes(currentJobStatus)) {
@@ -1503,8 +1512,6 @@ app.put(
       throw new AppError("Invalid job id", 400, "INVALID_JOB_ID");
     }
 
-    console.log('[PUT /jobs/:id/status] request body:', JSON.stringify(req.body || {}));
-    console.log('[PUT /jobs/:id/status] auth user:', req.user ? { id: req.user.id, role: req.user.role } : null);
 
     const requestedStatus = normalizeStatus(req.body?.status);
     if (!requestedStatus) {
@@ -1534,7 +1541,6 @@ app.put(
       }
 
       const job = jobResult.rows[0];
-      console.log('[PUT /jobs/:id/status] job lookup result:', job);
       const currentStatus = normalizeStatus(job.status);
 
       if (currentStatus === JOB_STATUSES.DELETED) {
@@ -1575,13 +1581,11 @@ app.put(
           "SELECT * FROM pricing_header WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1",
           [jobId]
         );
-        console.log('[PUT /jobs/:id/status] pricing query result rows:', pricingResult.rows.length);
         if (pricingResult.rows.length === 0) {
           throw new AppError("Cannot approve job without pricing", 400, "MISSING_PRICING");
         }
 
         const manager = await signatureService.getUserSignature(req.user.id);
-        console.log('[PUT /jobs/:id/status] manager signature:', manager);
         if (!manager?.signature_url) {
           throw new AppError(
             "Manager signature is required for approval",
@@ -1593,7 +1597,6 @@ app.put(
         const engineer = job.engineer_id
           ? await signatureService.getUserSignature(job.engineer_id)
           : null;
-        console.log('[PUT /jobs/:id/status] engineer signature:', engineer);
 
         const approvalSnapshot = pdfGovernanceService.generateApprovalSnapshot({
           job: { ...job, status: requestedStatus },
@@ -1636,9 +1639,7 @@ app.put(
       const whereParam = values.length;
 
       const updateQuery = `UPDATE job_master SET ${fields.join(", ")} WHERE id = $${whereParam} RETURNING *`;
-      console.log('[PUT /jobs/:id/status] executing update:', updateQuery, 'values:', values);
       const updated = await client.query(updateQuery, values);
-      console.log('[PUT /jobs/:id/status] update result:', updated.rows[0]);
 
       await client.query("COMMIT");
 
@@ -1650,7 +1651,6 @@ app.put(
             ? "Job Deletion"
             : "Status Change";
 
-      console.log('[PUT /jobs/:id/status] logging audit event:', { actionType, jobId, from: currentStatus, to: requestedStatus });
       logAuditEvent(req, actionType, "job", jobId, { status: currentStatus }, { status: requestedStatus });
 
       let eventType;
@@ -1684,7 +1684,6 @@ app.put(
           const notificationType = requestedStatus === JOB_STATUSES.APPROVED
             ? eventService.NOTIFICATION_TYPES.JOB_APPROVED
             : eventService.NOTIFICATION_TYPES.JOB_CLOSED;
-          console.log('[PUT /jobs/:id/status] event emitted id:', event.id, 'notificationType:', notificationType, 'recipient:', job.engineer_id);
 
           await eventService.queueNotification({
             eventId: event.id,
@@ -1697,7 +1696,6 @@ app.put(
 
       if (requestedStatus === JOB_STATUSES.APPROVED) {
         const approvalJob = { ...job, status: requestedStatus };
-        console.log('[PUT /jobs/:id/status] preparing Zoho note and n8n payload');
         const zohoNote = await openAiService.generateZohoNote({
           job: approvalJob,
           pricing: pricingResult?.rows[0] ?? {},
@@ -2227,30 +2225,21 @@ app.post(
 
     // Generate secure filename (preserve existing logic)
     const filename = generateSecureFilename(req.user.id, "signature", req.file.originalname);
-    console.log('[POST /signatures/manager] auth user:', { id: req.user.id, role: req.user.role, email: req.user.email });
-    console.log('[POST /signatures/manager] generated filename:', filename);
-    console.log('[POST /signatures/manager] file size:', req.file.size, 'bytes');
 
     // Upload file using storage service
     const uploadResult = await storageService.uploadFile(req.file.buffer, filename, "signature");
-    console.log('[POST /signatures/manager] uploadResult:', uploadResult);
-    console.log('[POST /signatures/manager] uploaded file path:', uploadResult.filepath);
-    console.log('[POST /signatures/manager] generated signature_url:', uploadResult.url);
     if (uploadResult.error) {
       throw new AppError(uploadResult.error, 400);
     }
 
     // Get existing signature for audit
     const existing = await signatureService.getUserSignature(req.user.id);
-    console.log('[POST /signatures/manager] existing signature:', existing);
 
     // Update user signature metadata
-    console.log('[POST /signatures/manager] calling upsertUserSignature with:', { userId: req.user.id, signature_url: uploadResult.url });
     const updated = await signatureService.upsertUserSignature({
       userId: req.user.id,
       signature_url: uploadResult.url,
     });
-    console.log('[POST /signatures/manager] upsertUserSignature result:', updated);
     if (!updated) {
       console.error('[POST /signatures/manager] DB update failed for user:', req.user.id);
       throw new AppError('Failed to persist manager signature metadata', 500);
@@ -2369,28 +2358,21 @@ app.post(
 
     // Generate secure filename (preserve existing logic)
     const filename = generateSecureFilename(req.user.id, "signature", req.file.originalname);
-    console.log('[POST /signatures/engineer] auth user:', { id: req.user.id, role: req.user.role, email: req.user.email });
-    console.log('[POST /signatures/engineer] generated filename:', filename);
-    console.log('[POST /signatures/engineer] file size:', req.file.size, 'bytes');
 
     // Upload file using storage service
     const uploadResult = await storageService.uploadFile(req.file.buffer, filename, "signature");
-    console.log('[POST /signatures/engineer] uploadResult:', uploadResult);
     if (uploadResult.error) {
       throw new AppError(uploadResult.error, 400);
     }
 
     // Get existing signature for audit
     const existing = await signatureService.getUserSignature(req.user.id);
-    console.log('[POST /signatures/engineer] existing signature:', existing);
 
     // Update user signature metadata
-    console.log('[POST /signatures/engineer] calling upsertUserSignature with:', { userId: req.user.id, signature_url: uploadResult.url });
     const updated = await signatureService.upsertUserSignature({
       userId: req.user.id,
       signature_url: uploadResult.url,
     });
-    console.log('[POST /signatures/engineer] upsertUserSignature result:', updated);
     if (!updated) {
       console.error('[POST /signatures/engineer] DB update failed for user:', req.user.id);
       throw new AppError('Failed to persist engineer signature metadata', 500);

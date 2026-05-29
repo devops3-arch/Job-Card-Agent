@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS job_master (
     under_warranty BOOLEAN,
     -- Job Info
     equipment_name TEXT NOT NULL,
+    equipment_model TEXT,
+    equipment_brand_description TEXT,
+    equipment_part_no TEXT,
+    equipment_serial_no TEXT,
+    equipment_year TEXT,
     service_type TEXT,
     other_expenses NUMERIC DEFAULT 0,
     discount_percentage NUMERIC DEFAULT 0,
@@ -98,6 +103,11 @@ ALTER TABLE job_master ADD COLUMN IF NOT EXISTS under_warranty BOOLEAN;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS service_type TEXT;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS other_expenses NUMERIC DEFAULT 0;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS discount_percentage NUMERIC DEFAULT 0;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS equipment_model TEXT;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS equipment_brand_description TEXT;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS equipment_part_no TEXT;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS equipment_serial_no TEXT;
+ALTER TABLE job_master ADD COLUMN IF NOT EXISTS equipment_year TEXT;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS engineer_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE job_master ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'DRAFT';

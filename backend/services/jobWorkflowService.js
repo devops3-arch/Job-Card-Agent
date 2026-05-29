@@ -229,8 +229,6 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
     const pricingQuery = `SELECT * FROM pricing_header WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1`;
     const pricingResult = await useClient.query(pricingQuery, [jobId]);
 
-    console.log('[validateJobReadyForApproval] pricing query:', pricingQuery, 'values:', [jobId]);
-    console.log('[validateJobReadyForApproval] pricing row:', pricingResult.rows[0]);
 
     if (pricingResult.rows.length === 0) {
       details.push({ field: "pricing", message: "Pricing must be submitted before approval." });
@@ -239,13 +237,6 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
       const storedGrandTotal = Number(pricing.grand_total ?? pricing.total_after_discount ?? 0);
       const storedVatAmount = Number(pricing.vat_amount ?? 0);
 
-      console.log('[validateJobReadyForApproval] pricing totals:', {
-        grand_total: pricing.grand_total,
-        total_after_discount: pricing.total_after_discount,
-        vat_amount: pricing.vat_amount,
-        storedGrandTotal,
-        storedVatAmount,
-      });
 
       if (storedGrandTotal <= 0) {
         details.push({ field: "grand_total", message: "Grand total must be greater than 0." });
@@ -253,10 +244,8 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
     }
 
     const managerToValidateId = approverId || job.manager_id;
-    console.log('[validateJobReadyForApproval] manager signature lookup', { jobId, approverId, managerToValidateId });
     if (managerToValidateId) {
       const manager = await signatureService.getUserSignature(managerToValidateId);
-      console.log('[validateJobReadyForApproval] manager row:', manager);
       if (!manager || !manager.signature_url) {
         details.push({ field: "manager_signature", message: "Manager signature is required before approval." });
       }

@@ -27,29 +27,21 @@ export class LocalStorageProvider {
       // Get upload path (preserves existing logic)
       const uploadPath = this.getUploadPath(fileType, filename);
       const fullPath = path.join(this.baseDir, uploadPath);
-      console.log('[localStorageProvider.uploadFile] baseDir:', this.baseDir);
-      console.log('[localStorageProvider.uploadFile] uploadPath:', uploadPath);
-      console.log('[localStorageProvider.uploadFile] fullPath:', fullPath);
-      console.log('[localStorageProvider.uploadFile] buffer size:', buffer.length);
 
       // Ensure directory exists
       const dir = path.dirname(fullPath);
       if (!fs.existsSync(dir)) {
-        console.log('[localStorageProvider.uploadFile] creating directory:', dir);
         fs.mkdirSync(dir, { recursive: true });
       } else {
-        console.log('[localStorageProvider.uploadFile] directory already exists:', dir);
       }
 
       // Write file to disk
       fs.writeFileSync(fullPath, buffer);
-      console.log('[localStorageProvider.uploadFile] file written successfully');
 
       const result = {
         url: `/${uploadPath}`, // Relative URL for local access
         filepath: uploadPath,
       };
-      console.log('[localStorageProvider.uploadFile] returning result:', result);
       return result;
     } catch (error) {
       console.error('[localStorageProvider.uploadFile] error:', error.message);
