@@ -371,8 +371,6 @@ export function generateExcel(data: JobCardData) {
   setCell(ws, 38, 17, "", baseCellStyle);
   setMerged(ws, "S38:T38", "", baseCellStyle);
 
-  setMerged(ws, "A39:M39", "SERVICE CHARGE JUSTIFICATION:", labelStyle);
-  setMerged(ws, "N39:T39", data.serviceChargeReason || "", baseCellStyle);
 
   setMerged(ws, "A40:D40", "TECHNICIAN:", centerBoldStyle);
   setMerged(ws, "A41:D41", "SUPERVISOR:", centerBoldStyle);

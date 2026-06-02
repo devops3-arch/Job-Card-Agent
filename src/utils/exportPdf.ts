@@ -250,12 +250,6 @@ export async function generatePDF(data: JobCardData) {
       { content: "SERVICE CHARGE", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
       data.serviceCharge.toFixed(2),
     ] as any);
-    if (data.serviceChargeReason && data.serviceChargeReason.trim().length > 0) {
-      partsBody.push([
-        { content: "SERVICE CHARGE JUSTIFICATION", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
-        data.serviceChargeReason,
-      ] as any);
-    }
   }
 
   if (data.discountPercentage > 0) {
