@@ -139,6 +139,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
                  setParts(data.data.parts.map((p: any) => ({
                     id: String(p.id),
                     description: p.part_name,
+                    partNumber: p.part_number || "",
                     qty: Number(p.quantity) || 0,
                     unitPrice: Number(p.unit_price) || 0,
                     totalPrice: Number(p.total) || 0,
@@ -414,6 +415,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       const sanitizedParts = (parts || []).map((p) => removeUndefined({
         id: p.id,
         description: p.description || "",
+        partNumber: p.partNumber || undefined,
         qty: Number(p.qty) || 0,
         unitPrice: Number(p.unitPrice) || 0,
         totalPrice: Number(p.qty || 0) * Number(p.unitPrice || 0),

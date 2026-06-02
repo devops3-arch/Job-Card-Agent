@@ -228,7 +228,7 @@ export async function generatePDF(data: JobCardData) {
   const partsBody = data.parts.map((p, i) => [
     (i + 1).toString(),
     p.description,
-    "",
+    p.partNumber || "",
     p.qty.toString(),
     p.unitPrice.toFixed(2),
     p.totalPrice.toFixed(2),
@@ -288,10 +288,6 @@ export async function generatePDF(data: JobCardData) {
     partsBody.push([
       { content: `DISCOUNT (${data.discountPercentage}%)`, colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
       `- ${discount.toFixed(2)}`,
-    ] as any);
-    partsBody.push([
-      { content: "TOTAL AFTER DISCOUNT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
-      totalAfterDiscount.toFixed(2),
     ] as any);
   }
 

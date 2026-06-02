@@ -130,6 +130,7 @@ const mapPart = (p) => {
     const unit_price = toNum(p.unitPrice  ?? p.unit_price);
     return {
         part_name:  p.description ?? p.part_name ?? "",
+        part_number: p.partNumber ?? p.part_number ?? null,
         quantity:   qty,
         unit_price,
         total: toNum(p.totalPrice ?? p.total, qty * unit_price),
@@ -553,9 +554,9 @@ app.post(
         if (safeParts.length > 0) {
           for (const part of safeParts) {
             await client.query(
-              `INSERT INTO job_parts (job_id, part_name, quantity, unit_price, total)
-               VALUES ($1, $2, $3, $4, $5)`,
-              [jobId, part.part_name, part.quantity, part.unit_price, part.total]
+              `INSERT INTO job_parts (job_id, part_name, part_number, quantity, unit_price, total)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [jobId, part.part_name, part.part_number || null, part.quantity, part.unit_price, part.total]
             );
           }
         }
@@ -1056,16 +1057,16 @@ app.put(
           
           try {
             await client.query(
-              `INSERT INTO job_parts (job_id, part_name, quantity, unit_price, total)
-               VALUES ($1, $2, $3, $4, $5)`,
-              [jobId, mappedPart.part_name, mappedPart.quantity, mappedPart.unit_price, mappedPart.total]
+              `INSERT INTO job_parts (job_id, part_name, part_number, quantity, unit_price, total)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [jobId, mappedPart.part_name, mappedPart.part_number || null, mappedPart.quantity, mappedPart.unit_price, mappedPart.total]
             );
           } catch (err) {
             console.error(`[FAILED QUERY] INSERT job_parts failed at index ${partIdx}:`);
             console.error(err.message);
             console.error(err.code);
             console.error(err.detail);
-            console.error("Insert params:", [jobId, mappedPart.part_name, mappedPart.quantity, mappedPart.unit_price, mappedPart.total]);
+            console.error("Insert params:", [jobId, mappedPart.part_name, mappedPart.part_number || null, mappedPart.quantity, mappedPart.unit_price, mappedPart.total]);
             console.error(err.stack);
             throw err;
           }

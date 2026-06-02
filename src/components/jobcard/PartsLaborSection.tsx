@@ -151,6 +151,10 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                           <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Part Description</label>
                           <Input list="parts-list" className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" placeholder="Part description" value={part.description} onChange={(e) => updatePart(part.id, "description", e.target.value)} />
                         </div>
+                        <div>
+                          <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Part Number</label>
+                          <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" placeholder="Part number" value={part.partNumber || ""} onChange={(e) => updatePart(part.id, "partNumber", e.target.value)} />
+                        </div>
                         <div className={`grid gap-3 ${role === 'manager' ? 'grid-cols-3' : 'grid-cols-1'}`}>
                           <div>
                             <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Qty</label>
@@ -180,6 +184,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                   <thead>
                     <tr className="bg-muted/40">
                       <th className="text-left py-3 px-4 text-xs uppercase tracking-wider text-black font-black">Part Description</th>
+                      <th className="text-left py-3 px-4 text-xs uppercase tracking-wider text-black font-black w-32">Part Number</th>
                       <th className="text-left py-3 px-4 text-xs uppercase tracking-wider text-black font-black w-20">Qty</th>
                       {role === 'manager' && (
                         <>
@@ -204,6 +209,9 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                         >
                           <td className="py-2.5 px-4">
                             <Input list="parts-list" className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" placeholder="Part description" value={part.description} onChange={(e) => updatePart(part.id, "description", e.target.value)} />
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" placeholder="Part number" value={part.partNumber || ""} onChange={(e) => updatePart(part.id, "partNumber", e.target.value)} />
                           </td>
                           <td className="py-2.5 px-4">
                             <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" min={1} value={part.qty} onChange={(e) => updatePart(part.id, "qty", e.target.value === "" ? "" : Number(e.target.value))} />

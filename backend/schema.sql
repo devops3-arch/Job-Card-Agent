@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS job_parts (
     id SERIAL PRIMARY KEY,
     job_id INTEGER REFERENCES job_master(id) ON DELETE CASCADE,
     part_name TEXT,
+    part_number TEXT,
     quantity NUMERIC DEFAULT 0,
     unit_price NUMERIC DEFAULT 0,
     total NUMERIC DEFAULT 0

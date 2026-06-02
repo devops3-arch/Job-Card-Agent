@@ -39,6 +39,7 @@ export interface ChecklistItem {
 export interface PartItem {
   id: string;
   description: string;
+  partNumber?: string;
   qty: number | string;
   unitPrice: number | string;
   totalPrice: number;
