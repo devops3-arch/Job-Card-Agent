@@ -37,6 +37,13 @@ const serviceTypes: { value: ServiceType; label: string; emoji: string }[] = [
   { value: "breakdown_call", label: "Breakdown Call", emoji: "🔧" },
 ];
 
+const salesAreaOptions: { value: SalesArea; label: string }[] = [
+  { value: "Dubai", label: "Dubai" },
+  { value: "Northern Emirates", label: "Northern Emirates" },
+  { value: "Abu Dhabi", label: "Abu Dhabi" },
+  { value: "Abu Dhabi Variable", label: "Abu Dhabi Variable" },
+];
+
 const fieldVariants = {
   hidden: { opacity: 0, y: 12 },
   visible: (i: number) => ({
@@ -125,8 +132,8 @@ const CustomerInfoSection = ({
                   <SelectValue placeholder="Select location" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(['Dubai', 'Northern Emirates', 'Abu Dhabi', 'Abu Dhabi Variable'] as SalesArea[]).map((loc) => (
-                    <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                  {salesAreaOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

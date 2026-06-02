@@ -239,11 +239,24 @@ export async function generatePDF(data: JobCardData) {
 
   const totalParts = data.parts.reduce((s, p) => s + p.totalPrice, 0);
   const totalLabor = data.labor.reduce((s, l) => s + l.totalCost, 0);
-  const totalAmount = totalParts + totalLabor + data.otherExpenses;
+  const totalAmount = totalParts + totalLabor + data.otherExpenses + (data.serviceCharge || 0);
   const discount = totalAmount * (data.discountPercentage / 100);
   const totalAfterDiscount = totalAmount - discount;
   const vat = totalAfterDiscount * 0.05;
   const grandTotal = totalAfterDiscount + vat;
+
+  if (data.serviceCharge && data.serviceCharge > 0) {
+    partsBody.push([
+      { content: "SERVICE CHARGE", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
+      data.serviceCharge.toFixed(2),
+    ] as any);
+    if (data.serviceChargeReason && data.serviceChargeReason.trim().length > 0) {
+      partsBody.push([
+        { content: "SERVICE CHARGE JUSTIFICATION", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
+        data.serviceChargeReason,
+      ] as any);
+    }
+  }
 
   if (data.discountPercentage > 0) {
     partsBody.push([

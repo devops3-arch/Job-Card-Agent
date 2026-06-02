@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SERVICE_CHARGE_MAP } from "@/types/jobCard";
 import { toast } from "sonner";
 import CustomerInfoSection from "./CustomerInfoSection";
 import EquipmentDetailsSection from "./EquipmentDetailsSection";
@@ -75,6 +76,8 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
   const [labor, setLabor] = useState<LaborItem[]>([]);
   const [otherExpenses, setOtherExpenses] = useState(0);
   const [discountPercentage, setDiscountPercentage] = useState(0);
+  const [serviceCharge, setServiceCharge] = useState(0);
+  const [serviceChargeReason, setServiceChargeReason] = useState("");
   const [managerId, setManagerId] = useState<number | null>(null);
   const [managerName, setManagerName] = useState("");
   const [engineerId, setEngineerId] = useState<number | null>(null);
@@ -128,6 +131,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               if (jobData.other_expenses) setOtherExpenses(Number(jobData.other_expenses));
               if (jobData.discount_percentage) setDiscountPercentage(Number(jobData.discount_percentage));
               if (jobData.manager_name) setManagerName(jobData.manager_name);
+              if (storedJson.service_charge !== undefined && storedJson.service_charge !== null) {
+                setServiceCharge(Number(storedJson.service_charge) || 0);
+              }
+              if (storedJson.service_charge_reason) {
+                setServiceChargeReason(String(storedJson.service_charge_reason));
+              }
 
               if (data.data.parts && data.data.parts.length > 0) {
                  setParts(data.data.parts.map((p: any) => ({
@@ -276,6 +285,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     }
   }, [engineerId, customerInfo.engineerName, engineers]);
 
+  useEffect(() => {
+    if (customerInfo.salesArea !== "Abu Dhabi Variable") {
+      setServiceChargeReason("");
+    }
+  }, [customerInfo.salesArea]);
+
   // Track overall progress
   const totalChecklist = compressorChecklist.length + dryerChecklist.length;
   const doneChecklist = compressorChecklist.filter(i => i.status === 'done').length + dryerChecklist.filter(i => i.status === 'done').length;
@@ -291,6 +306,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     return steps;
   }, [customerInfo, doneChecklist, parts.length]);
 
+  const computedServiceCharge = customerInfo.salesArea === "Abu Dhabi Variable"
+    ? serviceCharge
+    : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
+
   const getFormData = (): JobCardData => ({
     customerInfo,
     serviceType,
@@ -303,12 +322,24 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     managerName,
     managerId: managerId ?? undefined,
     engineerId: engineerId ?? undefined,
+    serviceCharge: computedServiceCharge,
+    serviceChargeReason,
   });
 
   const validate = (): boolean => {
     if (!customerInfo.customerName) { toast.error("Please select a customer"); return false; }
     if (!customerInfo.jobCardNo) { toast.error("Please enter a job card number"); return false; }
     if (!customerInfo.date) { toast.error("Please select a date"); return false; }
+    if (customerInfo.salesArea === "Abu Dhabi Variable") {
+      if (Number.isNaN(serviceCharge) || serviceCharge < 0) {
+        toast.error("Service Charge is required and must be 0 or more for Abu Dhabi Variable.");
+        return false;
+      }
+      if (!serviceChargeReason.trim() || serviceChargeReason.trim().length < 10) {
+        toast.error("Service Charge justification is required and must be at least 10 characters.");
+        return false;
+      }
+    }
     return true;
   };
 
@@ -326,6 +357,16 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     if (unpricedLabor.length > 0) {
       toast.error(`${unpricedLabor.length} labor entr(ies) have no rate set. Please fill in all highlighted rate fields.`);
       return false;
+    }
+    if (customerInfo.salesArea === "Abu Dhabi Variable") {
+      if (Number.isNaN(serviceCharge) || serviceCharge < 0) {
+        toast.error("Service Charge is required and must be 0 or more for Abu Dhabi Variable.");
+        return false;
+      }
+      if (!serviceChargeReason.trim() || serviceChargeReason.trim().length < 10) {
+        toast.error("Service Charge justification is required and must be at least 10 characters.");
+        return false;
+      }
     }
     return true;
   };
@@ -370,11 +411,14 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       0
     );
 
-    const serviceCharge = 0;
-    const discount = (partsTotal + labourTotal) * (discountPercentage / 100);
+    const computedServiceCharge = customerInfo.salesArea === "Abu Dhabi Variable"
+      ? serviceCharge
+      : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
+
+    const discount = (partsTotal + labourTotal + computedServiceCharge) * (discountPercentage / 100);
 
     const taxableAmount =
-      partsTotal + labourTotal + otherExpenses + serviceCharge - discount;
+      partsTotal + labourTotal + computedServiceCharge - discount;
 
     const vatPercent = 5;
     const vatAmount = taxableAmount * (vatPercent / 100);
@@ -434,6 +478,8 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           manager_name: managerName || "",
           compressor_checklist: compressorChecklist || [],
           dryer_checklist: dryerChecklist || [],
+          service_charge: computedServiceCharge,
+          service_charge_reason: serviceChargeReason || undefined,
         }
       });
 
@@ -478,7 +524,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         method: "POST",
         body: JSON.stringify({
           labour_rate: 0,
-          service_charge: serviceCharge,
+          service_charge: computedServiceCharge,
           discount: discount,
           vat_percent: vatPercent,
           parts_total: partsTotal,
@@ -716,6 +762,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               salesArea={customerInfo.salesArea}
               underWarranty={customerInfo.underWarranty}
               serviceType={serviceType}
+              serviceCharge={computedServiceCharge}
+              serviceChargeReason={serviceChargeReason}
+              onServiceChargeChange={setServiceCharge}
+              onServiceChargeReasonChange={setServiceChargeReason}
             />
           </motion.div>
         )}

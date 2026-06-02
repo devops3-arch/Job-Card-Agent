@@ -363,29 +363,40 @@ export function generateExcel(data: JobCardData) {
   setCell(ws, 37, 17, "", baseCellStyle);
   setMerged(ws, "S37:T37", "", baseCellStyle);
 
-  setMerged(ws, "A38:D38", "TECHNICIAN:", centerBoldStyle);
-  setMerged(ws, "A39:D39", "SUPERVISOR:", centerBoldStyle);
-  setMerged(ws, "A40:D40", "", centerBoldStyle);
-  setMerged(ws, "E38:J38", "", baseCellStyle);
-  setMerged(ws, "E39:J39", "", baseCellStyle);
+  setMerged(ws, "A38:M38", "SERVICE CHARGE:", labelStyle);
+  setCell(ws, 38, 13, data.serviceCharge as string | number, baseCellStyle);
+  setCell(ws, 38, 14, "", baseCellStyle);
+  setCell(ws, 38, 15, "", baseCellStyle);
+  setCell(ws, 38, 16, "", baseCellStyle);
+  setCell(ws, 38, 17, "", baseCellStyle);
+  setMerged(ws, "S38:T38", "", baseCellStyle);
+
+  setMerged(ws, "A39:M39", "SERVICE CHARGE JUSTIFICATION:", labelStyle);
+  setMerged(ws, "N39:T39", data.serviceChargeReason || "", baseCellStyle);
+
+  setMerged(ws, "A40:D40", "TECHNICIAN:", centerBoldStyle);
+  setMerged(ws, "A41:D41", "SUPERVISOR:", centerBoldStyle);
+  setMerged(ws, "A42:D42", "", centerBoldStyle);
   setMerged(ws, "E40:J40", "", baseCellStyle);
+  setMerged(ws, "E41:J41", "", baseCellStyle);
+  setMerged(ws, "E42:J42", "", baseCellStyle);
 
-  setMerged(ws, "K38:M38", "COST AND ESTIMATION\n(C & E):", centerBoldStyle);
-  setMerged(ws, "K39:M39", "MANAGER:", centerBoldStyle);
-  setMerged(ws, "K40:M40", "", centerBoldStyle);
-  setMerged(ws, "N38:O38", "", baseCellStyle);
-  setMerged(ws, "N39:O39", "", baseCellStyle);
+  setMerged(ws, "K40:M40", "COST AND ESTIMATION\n(C & E):", centerBoldStyle);
+  setMerged(ws, "K41:M41", "MANAGER:", centerBoldStyle);
+  setMerged(ws, "K42:M42", "", centerBoldStyle);
   setMerged(ws, "N40:O40", "", baseCellStyle);
+  setMerged(ws, "N41:O41", "", baseCellStyle);
+  setMerged(ws, "N42:O42", "", baseCellStyle);
 
-  setMerged(ws, "P38:Q38", "SUPERVISOR:", centerBoldStyle);
-  setMerged(ws, "P39:Q39", "MANAGER:", centerBoldStyle);
-  setMerged(ws, "P40:Q40", "ACCOUNTANT:", centerBoldStyle);
-  setMerged(ws, "R38:T38", "", baseCellStyle);
-  setMerged(ws, "R39:T39", "", baseCellStyle);
+  setMerged(ws, "P40:Q40", "SUPERVISOR:", centerBoldStyle);
+  setMerged(ws, "P41:Q41", "MANAGER:", centerBoldStyle);
+  setMerged(ws, "P42:Q42", "ACCOUNTANT:", centerBoldStyle);
   setMerged(ws, "R40:T40", "", baseCellStyle);
+  setMerged(ws, "R41:T41", "", baseCellStyle);
+  setMerged(ws, "R42:T42", "", baseCellStyle);
 
-  setMerged(ws, "A42:A42", "NOTE:", labelStyle);
-  setMerged(ws, "B42:T42", "TO BE UTILIZED FOR GPS / INCENTIVE / COMPLAINTS / FINAL INVOICE", labelStyle);
+  setMerged(ws, "A44:A44", "NOTE:", labelStyle);
+  setMerged(ws, "B44:T44", "TO BE UTILIZED FOR GPS / INCENTIVE / COMPLAINTS / FINAL INVOICE", labelStyle);
 
   applyStyleToRange(ws, "A1:T58", baseCellStyle);
   applyStyleToRange(ws, "A1:T1", topBandStyle);

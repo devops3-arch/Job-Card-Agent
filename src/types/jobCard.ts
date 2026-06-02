@@ -4,7 +4,7 @@ export const SERVICE_CHARGE_MAP: Record<string, number> = {
   'Dubai': 1200,
   'Northern Emirates': 1500,
   'Abu Dhabi': 2100,
-  'Abu Dhabi Variable': 2500,
+  'Abu Dhabi Variable': 0,
 };
 
 export interface CustomerInfo {
@@ -73,4 +73,6 @@ export interface JobCardData {
   managerName?: string;
   managerId?: number;
   engineerId?: number;
+  serviceCharge?: number;
+  serviceChargeReason?: string;
 }

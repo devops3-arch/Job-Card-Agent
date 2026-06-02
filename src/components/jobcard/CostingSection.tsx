@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, TrendingUp, Percent, Receipt, Coins } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { PartItem, LaborItem, SERVICE_CHARGE_MAP, ServiceType } from "@/types/jobCard";
+import { Textarea } from "@/components/ui/textarea";
+import { PartItem, LaborItem, ServiceType } from "@/types/jobCard";
 
 interface Props {
   parts: PartItem[];
@@ -13,6 +14,10 @@ interface Props {
   salesArea: string;
   underWarranty: boolean;
   serviceType: ServiceType;
+  serviceCharge: number;
+  serviceChargeReason: string;
+  onServiceChargeChange: (val: number) => void;
+  onServiceChargeReasonChange: (val: string) => void;
 }
 
 const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: string }) => {
@@ -29,16 +34,15 @@ const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: str
   );
 };
 
-const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, underWarranty, serviceType }: Props) => {
+const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, underWarranty, serviceType, serviceCharge, serviceChargeReason, onServiceChargeChange, onServiceChargeReasonChange }: Props) => {
   const totalParts = parts.reduce((sum, p) => sum + (Number(p.totalPrice) || 0), 0);
   const totalLabor = labor.reduce((sum, l) => sum + (Number(l.totalCost) || 0), 0);
-  const isWaived = underWarranty || serviceType === "warranty" || serviceType === "service_contract";
-  const serviceCharge = isWaived ? 0 : (SERVICE_CHARGE_MAP[salesArea] || 0);
   const totalPartsCost = totalParts + totalLabor + otherExpenses + serviceCharge;
   const discount = totalPartsCost * (discountPercentage / 100);
   const totalAfterDiscount = totalPartsCost - discount;
   const vat = totalAfterDiscount * 0.05;
   const grandTotal = totalAfterDiscount + vat;
+  const isAbuDhabiVariable = salesArea === "Abu Dhabi Variable";
 
   return (
     <div className="section-card">
@@ -61,12 +65,46 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
         <div className="cost-row">
           <div className="flex items-center gap-2">
             <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm text-black">
-              Service Charge {isWaived ? <span className="text-success text-xs font-bold">(Waived)</span> : `(${salesArea || 'No location'})`}
-            </span>
+            <span className="text-sm text-black">Service Charge (AED)</span>
           </div>
           <AnimatedValue value={serviceCharge} />
         </div>
+
+        <AnimatePresence>
+          {isAbuDhabiVariable && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="rounded-3xl border border-border/60 bg-background p-4 mt-3"
+            >
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <label className="field-label">Service Charge (AED) *</label>
+                  <Input
+                    className="w-full h-11 text-right text-sm font-bold text-black bg-white/80 rounded-xl border-slate-300 tabular-nums"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={serviceCharge}
+                    onChange={(e) => onServiceChargeChange(Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="field-label">Reason / Justification *</label>
+                  <Textarea
+                    className="w-full min-h-[120px] rounded-xl border-border/60 bg-white/80 text-sm text-black focus:border-primary focus:ring-2 focus:ring-primary/10"
+                    value={serviceChargeReason}
+                    onChange={(e) => onServiceChargeReasonChange(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required when Abu Dhabi Variable is selected. Enter the approved service charge and justification.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="cost-row">
           <span className="text-sm text-black">Total Labor Cost</span>

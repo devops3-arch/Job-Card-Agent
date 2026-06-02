@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Loader2, CheckCircle2, Package, FileText, FileSpreadsheet, Pencil } from "lucide-react";
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
+import { SERVICE_CHARGE_MAP } from "@/types/jobCard";
 import type { JobCardData } from "@/types/jobCard";
 
 interface Part {
@@ -61,6 +62,10 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
         const compressorChecklist = Array.isArray(storedJson.compressor_checklist) ? storedJson.compressor_checklist : [];
         const dryerChecklist      = Array.isArray(storedJson.dryer_checklist)      ? storedJson.dryer_checklist      : [];
 
+        const serviceChargeValue = job?.sales_area === "Abu Dhabi Variable"
+            ? Number(storedJson.service_charge ?? 0)
+            : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
+
         return {
             customerInfo: {
                 customerName: job?.customer_name || "",
@@ -103,6 +108,8 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             otherExpenses:      Number(job?.other_expenses) || 0,
             discountPercentage: Number(job?.discount_percentage) || 0,
             managerName:        job?.manager_name || "",
+            serviceCharge:      serviceChargeValue,
+            serviceChargeReason: storedJson.service_charge_reason || "",
         };
     };
 
@@ -115,7 +122,16 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
         setSaving(true);
         try {
             const partsTotal = parts.reduce((s, p) => s + Number(p.quantity) * Number(prices[p.id]), 0);
-            const taxable    = partsTotal;
+            let storedJson: any = {};
+            try {
+                storedJson = (typeof job?.job_data === "string" ? JSON.parse(job.job_data) : job?.job_data) || {};
+            } catch {
+                storedJson = {};
+            }
+            const serviceChargeValue = job?.sales_area === "Abu Dhabi Variable"
+                ? Number(storedJson.service_charge ?? 0)
+                : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
+            const taxable    = partsTotal + serviceChargeValue;
             const vatAmount  = taxable * 0.05;
             const grandTotal = taxable + vatAmount;
 
@@ -126,7 +142,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                     parts_total: partsTotal, labour_total: 0,
                     taxable_amount: taxable, vat_amount: vatAmount,
                     grand_total: grandTotal, vat_percent: 5,
-                    discount: 0, service_charge: 0, labour_rate: 0,
+                    discount: 0, service_charge: serviceChargeValue, labour_rate: 0,
                 }),
             });
             if (!pricingRes.ok) throw new Error("Failed to save pricing");
