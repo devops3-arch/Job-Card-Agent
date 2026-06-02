@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SERVICE_CHARGE_MAP } from "@/types/jobCard";
+import { computePricingSummary } from "@/lib/pricing";
 import { toast } from "sonner";
 import CustomerInfoSection from "./CustomerInfoSection";
 import EquipmentDetailsSection from "./EquipmentDetailsSection";
@@ -382,31 +383,27 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     if (role === 'manager' && !validatePricing()) return;
 
     // CALCULATE PRICING
-    const partsTotal = parts.reduce(
-      (sum, item) =>
-  sum + Number(item.qty || 0) * Number(item.unitPrice || 0),
-      0
-    );
-
-    const labourTotal = labor.reduce(
-      (sum, item) =>
-  sum + Number(item.hours || 0) * Number(item.ratePerHour || 0),
-      0
-    );
-
     const computedServiceCharge = customerInfo.salesArea === "Abu Dhabi Variable"
       ? serviceCharge
       : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
 
-    const discount = (partsTotal + labourTotal + computedServiceCharge) * (discountPercentage / 100);
+    const pricingSummary = computePricingSummary({
+      parts: parts.map((item) => ({
+        ...item,
+        totalPrice: Number(item.qty || 0) * Number(item.unitPrice || 0),
+      })),
+      labor: labor.map((item) => ({
+        ...item,
+        totalCost: Number(item.hours || 0) * Number(item.ratePerHour || 0),
+      })),
+      otherExpenses: Number(otherExpenses) || 0,
+      serviceCharge: computedServiceCharge,
+      discountPercentage: Number(discountPercentage) || 0,
+    });
 
-    const taxableAmount =
-      partsTotal + labourTotal + computedServiceCharge - discount;
-
+    const { partsTotal, laborTotal, discount, totalAfterDiscount, vat, grandTotal } = pricingSummary;
     const vatPercent = 5;
-    const vatAmount = taxableAmount * (vatPercent / 100);
-
-    const grandTotal = taxableAmount + vatAmount;
+    const taxableAmount = totalAfterDiscount;
 
     try {
       // IF job exists, skip POST /jobs and just trigger pricing and status,
@@ -510,9 +507,9 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           discount: discount,
           vat_percent: vatPercent,
           parts_total: partsTotal,
-          labour_total: labourTotal,
+          labour_total: laborTotal,
           taxable_amount: taxableAmount,
-          vat_amount: vatAmount,
+          vat_amount: vat,
           grand_total: grandTotal
         }),
       });

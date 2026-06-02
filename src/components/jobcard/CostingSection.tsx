@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, TrendingUp, Percent, Receipt, Coins } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PartItem, LaborItem, ServiceType } from "@/types/jobCard";
+import { computePricingSummary } from "@/lib/pricing";
 
 interface Props {
   parts: PartItem[];
@@ -32,13 +33,14 @@ const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: str
 };
 
 const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, underWarranty, serviceType, serviceCharge, onServiceChargeChange }: Props) => {
-  const totalParts = parts.reduce((sum, p) => sum + (Number(p.totalPrice) || 0), 0);
-  const totalLabor = labor.reduce((sum, l) => sum + (Number(l.totalCost) || 0), 0);
-  const totalPartsCost = totalParts + totalLabor + otherExpenses + serviceCharge;
-  const discount = totalPartsCost * (discountPercentage / 100);
-  const totalAfterDiscount = totalPartsCost - discount;
-  const vat = totalAfterDiscount * 0.05;
-  const grandTotal = totalAfterDiscount + vat;
+  const pricingSummary = computePricingSummary({
+    parts,
+    labor,
+    otherExpenses,
+    serviceCharge,
+    discountPercentage,
+  });
+  const { partsTotal, laborTotal, totalCost, discount, totalAfterDiscount, vat, grandTotal } = pricingSummary;
   const isAbuDhabiVariable = salesArea === "Abu Dhabi Variable";
 
   return (
@@ -54,9 +56,9 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
         <div className="cost-row">
           <div className="flex items-center gap-2">
             <Coins className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm text-black">Total Parts Cost</span>
+            <span className="text-sm text-black">PARTS TOTAL</span>
           </div>
-          <AnimatedValue value={totalParts} />
+          <AnimatedValue value={partsTotal} />
         </div>
 
         <div className="cost-row">
@@ -86,6 +88,7 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
                     value={serviceCharge}
                     onChange={(e) => onServiceChargeChange(Number(e.target.value))}
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Required when Abu Dhabi Variable is selected.</p>
                 </div>
               </div>
             </motion.div>
@@ -93,12 +96,12 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
         </AnimatePresence>
 
         <div className="cost-row">
-          <span className="text-sm text-black">Total Labor Cost</span>
-          <AnimatedValue value={totalLabor} />
+          <span className="text-sm text-black">LABOR TOTAL</span>
+          <AnimatedValue value={laborTotal} />
         </div>
 
         <div className="cost-row border-t border-border/30 mt-1 pt-1">
-          <span className="text-sm text-black">Other Expenses</span>
+          <span className="text-sm text-black">OTHER EXPENSES</span>
           <Input
             className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
             type="number"
@@ -110,14 +113,14 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
         </div>
 
         <div className="cost-row border-t border-border/30">
-          <span className="text-sm text-black font-black">Total Cost</span>
-          <AnimatedValue value={totalPartsCost} />
+          <span className="text-sm text-black font-black">TOTAL COST</span>
+          <AnimatedValue value={totalCost} />
         </div>
 
         <div className="cost-row border-t border-border/30">
           <div className="flex items-center gap-1.5">
             <Percent className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm text-black">Discount (%)</span>
+            <span className="text-sm text-black">DISCOUNT %</span>
           </div>
           <Input
             className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
@@ -130,29 +133,20 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
           />
         </div>
 
-        <AnimatePresence>
-          {discountPercentage > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="cost-row"
-            >
-              <span className="text-sm text-black">Discount Amount</span>
-              <motion.span
-                key={discount.toFixed(2)}
-                initial={{ scale: 1.2 }}
-                animate={{ scale: 1 }}
-                className="font-black text-sm text-black tabular-nums"
-              >
-                - AED {discount.toFixed(2)}
-              </motion.span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="cost-row">
+          <span className="text-sm text-black">Discount Amount</span>
+          <motion.span
+            key={discount.toFixed(2)}
+            initial={{ scale: 1.2 }}
+            animate={{ scale: 1 }}
+            className="font-black text-sm text-black tabular-nums"
+          >
+            - AED {discount.toFixed(2)}
+          </motion.span>
+        </div>
 
         <div className="cost-row border-t border-border/30">
-          <span className="text-sm text-black">Total After Discount</span>
+          <span className="text-sm text-black">TOTAL AFTER DISCOUNT</span>
           <AnimatedValue value={totalAfterDiscount} />
         </div>
 

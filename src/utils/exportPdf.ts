@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { JobCardData } from "@/types/jobCard";
+import { computePricingSummary } from "@/lib/pricing";
 
 function triggerDownload(blob: Blob, filename: string) {
   // Force PDF mime type so browser & viewers recognize it correctly
@@ -237,13 +238,32 @@ export async function generatePDF(data: JobCardData) {
     partsBody.push([(partsBody.length + 1).toString(), "", "", "", "", ""]);
   }
 
-  const totalParts = data.parts.reduce((s, p) => s + p.totalPrice, 0);
-  const totalLabor = data.labor.reduce((s, l) => s + l.totalCost, 0);
-  const totalAmount = totalParts + totalLabor + data.otherExpenses + (data.serviceCharge || 0);
-  const discount = totalAmount * (data.discountPercentage / 100);
-  const totalAfterDiscount = totalAmount - discount;
-  const vat = totalAfterDiscount * 0.05;
-  const grandTotal = totalAfterDiscount + vat;
+  const pricingSummary = computePricingSummary({
+    parts: data.parts,
+    labor: data.labor,
+    otherExpenses: data.otherExpenses,
+    serviceCharge: data.serviceCharge || 0,
+    discountPercentage: data.discountPercentage,
+  });
+
+  const {
+    partsTotal,
+    laborTotal,
+    totalCost,
+    discount,
+    totalAfterDiscount,
+    vat,
+    grandTotal,
+  } = pricingSummary;
+
+  partsBody.push([
+    { content: "PARTS TOTAL", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
+    partsTotal.toFixed(2),
+  ] as any);
+  partsBody.push([
+    { content: "LABOR TOTAL", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
+    laborTotal.toFixed(2),
+  ] as any);
 
   if (data.serviceCharge && data.serviceCharge > 0) {
     partsBody.push([
@@ -252,32 +272,36 @@ export async function generatePDF(data: JobCardData) {
     ] as any);
   }
 
-  if (data.discountPercentage > 0) {
+  if (data.otherExpenses && data.otherExpenses > 0) {
     partsBody.push([
-      { content: "TOTAL AMOUNT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
-      totalAmount.toFixed(2),
+      { content: "OTHER EXPENSES", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
+      data.otherExpenses.toFixed(2),
     ] as any);
+  }
+
+  partsBody.push([
+    { content: "TOTAL AMOUNT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
+    totalCost.toFixed(2),
+  ] as any);
+
+  if (data.discountPercentage > 0) {
     partsBody.push([
       { content: `DISCOUNT (${data.discountPercentage}%)`, colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
       `- ${discount.toFixed(2)}`,
     ] as any);
     partsBody.push([
-      { content: "AFTER DISCOUNT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
+      { content: "TOTAL AFTER DISCOUNT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
       totalAfterDiscount.toFixed(2),
     ] as any);
-  } else {
-    partsBody.push([
-      { content: "TOTAL AMOUNT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
-      totalAmount ? totalAmount.toFixed(2) : "",
-    ] as any);
   }
+
   partsBody.push([
     { content: "VAT 5%", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
-    vat ? vat.toFixed(2) : "",
+    vat.toFixed(2),
   ] as any);
   partsBody.push([
     { content: "TOTAL PRICE INCLUSIVE VAT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
-    grandTotal ? grandTotal.toFixed(2) : "",
+    grandTotal.toFixed(2),
   ] as any);
 
   autoTable(doc, {

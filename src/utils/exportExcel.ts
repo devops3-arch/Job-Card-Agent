@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx-js-style";
 import { JobCardData, ServiceType } from "@/types/jobCard";
+import { computePricingSummary } from "@/lib/pricing";
 
 type CellStyle = {
   font?: {
@@ -337,64 +338,93 @@ export function generateExcel(data: JobCardData) {
     setMerged(ws, `S${r}:T${r}`, gross as string | number, baseCellStyle);
   }
 
-  const totalLabor = (Array.isArray(data.labor) ? data.labor : []).reduce((sum, row) => sum + (Number(row.totalCost) || 0), 0);
+  const pricingSummary = computePricingSummary({
+    parts: data.parts,
+    labor: data.labor,
+    otherExpenses: Number(data.otherExpenses || 0),
+    serviceCharge: Number(data.serviceCharge || 0),
+    discountPercentage: Number(data.discountPercentage || 0),
+  });
 
-  setMerged(ws, "A35:M35", "TOTAL LABOR COST", labelStyle);
-  setCell(ws, 35, 13, totalLabor as string | number, baseCellStyle); // N is 13
-  setCell(ws, 35, 14, "", baseCellStyle); // O
-  setCell(ws, 35, 15, "", baseCellStyle); // P
-  setCell(ws, 35, 16, "", baseCellStyle); // Q
-  setCell(ws, 35, 17, "", baseCellStyle); // R
-  setMerged(ws, "S35:T35", "", baseCellStyle);
+  setMerged(ws, "A35:M35", "PARTS TOTAL", labelStyle);
+  setMerged(ws, "N35:O35", "-", labelStyle);
+  setMerged(ws, "P35:Q35", "TOTAL", labelStyle);
+  setMerged(ws, "R35:T35", pricingSummary.partsTotal.toFixed(2), baseCellStyle);
 
-  setMerged(ws, "A36:M36", "OUTSOURCED ACTIVITY IF ANY", labelStyle);
-  setCell(ws, 36, 13, "", baseCellStyle);
-  setCell(ws, 36, 14, "", baseCellStyle);
-  setCell(ws, 36, 15, "", baseCellStyle);
-  setCell(ws, 36, 16, "", baseCellStyle);
-  setCell(ws, 36, 17, "", baseCellStyle);
-  setMerged(ws, "S36:T36", "", baseCellStyle);
+  setMerged(ws, "A36:M36", "TOTAL LABOR COST", labelStyle);
+  setMerged(ws, "N36:O36", "-", labelStyle);
+  setMerged(ws, "P36:Q36", "TOTAL", labelStyle);
+  setMerged(ws, "R36:T36", pricingSummary.laborTotal.toFixed(2), baseCellStyle);
 
-  setMerged(ws, "A37:M37", "OTHER EXPENSES:", labelStyle);
-  setCell(ws, 37, 13, data.otherExpenses as string | number, baseCellStyle);
-  setCell(ws, 37, 14, "", baseCellStyle);
-  setCell(ws, 37, 15, "", baseCellStyle);
-  setCell(ws, 37, 16, "", baseCellStyle);
-  setCell(ws, 37, 17, "", baseCellStyle);
-  setMerged(ws, "S37:T37", "", baseCellStyle);
+  setMerged(ws, "A37:M37", "OUTSOURCED ACTIVITY IF ANY", labelStyle);
+  setMerged(ws, "N37:O37", "-", labelStyle);
+  setMerged(ws, "P37:Q37", "TOTAL", labelStyle);
+  setMerged(ws, "R37:T37", "", baseCellStyle);
 
-  setMerged(ws, "A38:M38", "SERVICE CHARGE:", labelStyle);
-  setCell(ws, 38, 13, data.serviceCharge as string | number, baseCellStyle);
-  setCell(ws, 38, 14, "", baseCellStyle);
-  setCell(ws, 38, 15, "", baseCellStyle);
-  setCell(ws, 38, 16, "", baseCellStyle);
-  setCell(ws, 38, 17, "", baseCellStyle);
-  setMerged(ws, "S38:T38", "", baseCellStyle);
+  setMerged(ws, "A38:M38", "OTHER EXPENSES", labelStyle);
+  setMerged(ws, "N38:O38", "-", labelStyle);
+  setMerged(ws, "P38:Q38", "TOTAL", labelStyle);
+  setMerged(ws, "R38:T38", pricingSummary.otherExpenses.toFixed(2), baseCellStyle);
+
+  setMerged(ws, "A39:M39", "SERVICE CHARGE", labelStyle);
+  setMerged(ws, "N39:O39", "-", labelStyle);
+  setMerged(ws, "P39:Q39", "TOTAL", labelStyle);
+  setMerged(ws, "R39:T39", pricingSummary.serviceCharge.toFixed(2), baseCellStyle);
+
+  setMerged(ws, "A40:M40", "TOTAL COST", labelStyle);
+  setMerged(ws, "N40:O40", "-", labelStyle);
+  setMerged(ws, "P40:Q40", "TOTAL", labelStyle);
+  setMerged(ws, "R40:T40", pricingSummary.totalCost.toFixed(2), baseCellStyle);
+
+  setMerged(ws, "A41:M41", "DISCOUNT %", labelStyle);
+  setMerged(ws, "N41:O41", "-", labelStyle);
+  setMerged(ws, "P41:Q41", "TOTAL", labelStyle);
+  setMerged(ws, "R41:T41", `${Number(data.discountPercentage || 0).toFixed(2)}%`, baseCellStyle);
+
+  setMerged(ws, "A42:M42", "DISCOUNT AMOUNT", labelStyle);
+  setMerged(ws, "N42:O42", "-", labelStyle);
+  setMerged(ws, "P42:Q42", "TOTAL", labelStyle);
+  setMerged(ws, "R42:T42", pricingSummary.discount.toFixed(2), baseCellStyle);
+
+  setMerged(ws, "A43:M43", "TOTAL AFTER DISCOUNT", labelStyle);
+  setMerged(ws, "N43:O43", "-", labelStyle);
+  setMerged(ws, "P43:Q43", "TOTAL", labelStyle);
+  setMerged(ws, "R43:T43", pricingSummary.totalAfterDiscount.toFixed(2), baseCellStyle);
+
+  setMerged(ws, "A44:M44", "VAT (5%)", labelStyle);
+  setMerged(ws, "N44:O44", "-", labelStyle);
+  setMerged(ws, "P44:Q44", "TOTAL", labelStyle);
+  setMerged(ws, "R44:T44", pricingSummary.vat.toFixed(2), baseCellStyle);
+
+  setMerged(ws, "A45:M45", "GRAND TOTAL", labelStyle);
+  setMerged(ws, "N45:O45", "-", labelStyle);
+  setMerged(ws, "P45:Q45", "TOTAL", labelStyle);
+  setMerged(ws, "R45:T45", pricingSummary.grandTotal.toFixed(2), baseCellStyle);
 
 
-  setMerged(ws, "A40:D40", "TECHNICIAN:", centerBoldStyle);
-  setMerged(ws, "A41:D41", "SUPERVISOR:", centerBoldStyle);
-  setMerged(ws, "A42:D42", "", centerBoldStyle);
-  setMerged(ws, "E40:J40", "", baseCellStyle);
-  setMerged(ws, "E41:J41", "", baseCellStyle);
-  setMerged(ws, "E42:J42", "", baseCellStyle);
+  setMerged(ws, "A47:D47", "TECHNICIAN:", centerBoldStyle);
+  setMerged(ws, "A48:D48", "SUPERVISOR:", centerBoldStyle);
+  setMerged(ws, "A49:D49", "", centerBoldStyle);
+  setMerged(ws, "E47:J47", "", baseCellStyle);
+  setMerged(ws, "E48:J48", "", baseCellStyle);
+  setMerged(ws, "E49:J49", "", baseCellStyle);
 
-  setMerged(ws, "K40:M40", "COST AND ESTIMATION\n(C & E):", centerBoldStyle);
-  setMerged(ws, "K41:M41", "MANAGER:", centerBoldStyle);
-  setMerged(ws, "K42:M42", "", centerBoldStyle);
-  setMerged(ws, "N40:O40", "", baseCellStyle);
-  setMerged(ws, "N41:O41", "", baseCellStyle);
-  setMerged(ws, "N42:O42", "", baseCellStyle);
+  setMerged(ws, "K47:M47", "COST AND ESTIMATION\n(C & E):", centerBoldStyle);
+  setMerged(ws, "K48:M48", "MANAGER:", centerBoldStyle);
+  setMerged(ws, "K49:M49", "", centerBoldStyle);
+  setMerged(ws, "N47:O47", "", baseCellStyle);
+  setMerged(ws, "N48:O48", "", baseCellStyle);
+  setMerged(ws, "N49:O49", "", baseCellStyle);
 
-  setMerged(ws, "P40:Q40", "SUPERVISOR:", centerBoldStyle);
-  setMerged(ws, "P41:Q41", "MANAGER:", centerBoldStyle);
-  setMerged(ws, "P42:Q42", "ACCOUNTANT:", centerBoldStyle);
-  setMerged(ws, "R40:T40", "", baseCellStyle);
-  setMerged(ws, "R41:T41", "", baseCellStyle);
-  setMerged(ws, "R42:T42", "", baseCellStyle);
+  setMerged(ws, "P47:Q47", "SUPERVISOR:", centerBoldStyle);
+  setMerged(ws, "P48:Q48", "MANAGER:", centerBoldStyle);
+  setMerged(ws, "P49:Q49", "ACCOUNTANT:", centerBoldStyle);
+  setMerged(ws, "R47:T47", "", baseCellStyle);
+  setMerged(ws, "R48:T48", "", baseCellStyle);
+  setMerged(ws, "R49:T49", "", baseCellStyle);
 
-  setMerged(ws, "A44:A44", "NOTE:", labelStyle);
-  setMerged(ws, "B44:T44", "TO BE UTILIZED FOR GPS / INCENTIVE / COMPLAINTS / FINAL INVOICE", labelStyle);
+  setMerged(ws, "A51:A51", "NOTE:", labelStyle);
+  setMerged(ws, "B51:T51", "TO BE UTILIZED FOR GPS / INCENTIVE / COMPLAINTS / FINAL INVOICE", labelStyle);
 
   applyStyleToRange(ws, "A1:T58", baseCellStyle);
   applyStyleToRange(ws, "A1:T1", topBandStyle);
