@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, TrendingUp, Percent, Receipt, Coins } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { PartItem, LaborItem, ServiceType } from "@/types/jobCard";
 
 interface Props {
@@ -15,9 +14,7 @@ interface Props {
   underWarranty: boolean;
   serviceType: ServiceType;
   serviceCharge: number;
-  serviceChargeReason: string;
   onServiceChargeChange: (val: number) => void;
-  onServiceChargeReasonChange: (val: string) => void;
 }
 
 const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: string }) => {
@@ -34,7 +31,7 @@ const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: str
   );
 };
 
-const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, underWarranty, serviceType, serviceCharge, serviceChargeReason, onServiceChargeChange, onServiceChargeReasonChange }: Props) => {
+const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, underWarranty, serviceType, serviceCharge, onServiceChargeChange }: Props) => {
   const totalParts = parts.reduce((sum, p) => sum + (Number(p.totalPrice) || 0), 0);
   const totalLabor = labor.reduce((sum, l) => sum + (Number(l.totalCost) || 0), 0);
   const totalPartsCost = totalParts + totalLabor + otherExpenses + serviceCharge;
@@ -89,17 +86,6 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
                     value={serviceCharge}
                     onChange={(e) => onServiceChargeChange(Number(e.target.value))}
                   />
-                </div>
-                <div className="space-y-2">
-                  <label className="field-label">Reason / Justification *</label>
-                  <Textarea
-                    className="w-full min-h-[120px] rounded-xl border-border/60 bg-white/80 text-sm text-black focus:border-primary focus:ring-2 focus:ring-primary/10"
-                    value={serviceChargeReason}
-                    onChange={(e) => onServiceChargeReasonChange(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Required when Abu Dhabi Variable is selected. Enter the approved service charge and justification.
-                  </p>
                 </div>
               </div>
             </motion.div>

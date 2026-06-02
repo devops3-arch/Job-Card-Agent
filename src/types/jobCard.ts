@@ -74,5 +74,4 @@ export interface JobCardData {
   managerId?: number;
   engineerId?: number;
   serviceCharge?: number;
-  serviceChargeReason?: string;
 }

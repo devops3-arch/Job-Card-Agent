@@ -77,7 +77,6 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
   const [otherExpenses, setOtherExpenses] = useState(0);
   const [discountPercentage, setDiscountPercentage] = useState(0);
   const [serviceCharge, setServiceCharge] = useState(0);
-  const [serviceChargeReason, setServiceChargeReason] = useState("");
   const [managerId, setManagerId] = useState<number | null>(null);
   const [managerName, setManagerName] = useState("");
   const [engineerId, setEngineerId] = useState<number | null>(null);
@@ -133,9 +132,6 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               if (jobData.manager_name) setManagerName(jobData.manager_name);
               if (storedJson.service_charge !== undefined && storedJson.service_charge !== null) {
                 setServiceCharge(Number(storedJson.service_charge) || 0);
-              }
-              if (storedJson.service_charge_reason) {
-                setServiceChargeReason(String(storedJson.service_charge_reason));
               }
 
               if (data.data.parts && data.data.parts.length > 0) {
@@ -285,11 +281,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     }
   }, [engineerId, customerInfo.engineerName, engineers]);
 
-  useEffect(() => {
-    if (customerInfo.salesArea !== "Abu Dhabi Variable") {
-      setServiceChargeReason("");
-    }
-  }, [customerInfo.salesArea]);
+
 
   // Track overall progress
   const totalChecklist = compressorChecklist.length + dryerChecklist.length;
@@ -323,7 +315,6 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     managerId: managerId ?? undefined,
     engineerId: engineerId ?? undefined,
     serviceCharge: computedServiceCharge,
-    serviceChargeReason,
   });
 
   const validate = (): boolean => {
@@ -331,12 +322,8 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     if (!customerInfo.jobCardNo) { toast.error("Please enter a job card number"); return false; }
     if (!customerInfo.date) { toast.error("Please select a date"); return false; }
     if (customerInfo.salesArea === "Abu Dhabi Variable") {
-      if (Number.isNaN(serviceCharge) || serviceCharge < 0) {
-        toast.error("Service Charge is required and must be 0 or more for Abu Dhabi Variable.");
-        return false;
-      }
-      if (!serviceChargeReason.trim() || serviceChargeReason.trim().length < 10) {
-        toast.error("Service Charge justification is required and must be at least 10 characters.");
+      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
+        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
         return false;
       }
     }
@@ -359,12 +346,8 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       return false;
     }
     if (customerInfo.salesArea === "Abu Dhabi Variable") {
-      if (Number.isNaN(serviceCharge) || serviceCharge < 0) {
-        toast.error("Service Charge is required and must be 0 or more for Abu Dhabi Variable.");
-        return false;
-      }
-      if (!serviceChargeReason.trim() || serviceChargeReason.trim().length < 10) {
-        toast.error("Service Charge justification is required and must be at least 10 characters.");
+      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
+        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
         return false;
       }
     }
@@ -479,7 +462,6 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           compressor_checklist: compressorChecklist || [],
           dryer_checklist: dryerChecklist || [],
           service_charge: computedServiceCharge,
-          service_charge_reason: serviceChargeReason || undefined,
         }
       });
 
@@ -763,9 +745,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               underWarranty={customerInfo.underWarranty}
               serviceType={serviceType}
               serviceCharge={computedServiceCharge}
-              serviceChargeReason={serviceChargeReason}
               onServiceChargeChange={setServiceCharge}
-              onServiceChargeReasonChange={setServiceChargeReason}
             />
           </motion.div>
         )}

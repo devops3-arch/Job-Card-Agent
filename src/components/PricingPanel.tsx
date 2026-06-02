@@ -109,7 +109,6 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             discountPercentage: Number(job?.discount_percentage) || 0,
             managerName:        job?.manager_name || "",
             serviceCharge:      serviceChargeValue,
-            serviceChargeReason: storedJson.service_charge_reason || "",
         };
     };
 
