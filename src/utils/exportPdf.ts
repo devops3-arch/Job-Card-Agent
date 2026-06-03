@@ -218,6 +218,21 @@ export async function generatePDF(data: JobCardData) {
 
   y = (doc as any).lastAutoTable.finalY + 8.5;
 
+  const coverageLabel = data.coverageType
+    ? data.coverageType === "warranty_amc"
+      ? "Warranty / AMC"
+      : "Chargeable"
+    : "";
+
+  if (coverageLabel) {
+    doc.setFontSize(10.5);
+    doc.setFont("helvetica", "bold");
+    doc.text("Coverage Type:", 14, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(coverageLabel, 48, y);
+    y += 7;
+  }
+
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
   doc.text("Dear Sir,", 14, y);

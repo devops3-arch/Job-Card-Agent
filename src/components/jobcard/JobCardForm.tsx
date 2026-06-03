@@ -15,7 +15,7 @@ import CostingSection from "./CostingSection";
 import { defaultCompressorChecklist, defaultDryerChecklist } from "@/data/defaultChecklist";
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
-import type { JobCardData, CustomerInfo, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
+import type { JobCardData, CustomerInfo, CoverageType, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
 
 interface UserOption {
   id: number;
@@ -71,6 +71,7 @@ interface JobCardFormProps {
 const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) => {
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>(defaultCustomerInfo);
   const [serviceType, setServiceType] = useState<ServiceType>("service_contract");
+  const [coverageType, setCoverageType] = useState<CoverageType>("chargeable");
   const [compressorChecklist, setCompressorChecklist] = useState<ChecklistItem[]>(defaultCompressorChecklist);
   const [dryerChecklist, setDryerChecklist] = useState<ChecklistItem[]>(defaultDryerChecklist);
   const [parts, setParts] = useState<PartItem[]>([]);
@@ -133,6 +134,11 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               if (jobData.manager_name) setManagerName(jobData.manager_name);
               if (storedJson.service_charge !== undefined && storedJson.service_charge !== null) {
                 setServiceCharge(Number(storedJson.service_charge) || 0);
+              }
+              if (storedJson.coverage_type === "warranty_amc" || storedJson.coverage_type === "chargeable") {
+                setCoverageType(storedJson.coverage_type);
+              } else if (jobData.service_type === "breakdown_call") {
+                setCoverageType("chargeable");
               }
 
               if (data.data.parts && data.data.parts.length > 0) {
@@ -300,13 +306,16 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     return steps;
   }, [customerInfo, doneChecklist, parts.length]);
 
-  const computedServiceCharge = customerInfo.salesArea === "Abu Dhabi Variable"
-    ? serviceCharge
-    : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
+  const computedServiceCharge = serviceType === "breakdown_call" && coverageType === "warranty_amc"
+    ? 0
+    : customerInfo.salesArea === "Abu Dhabi Variable"
+      ? serviceCharge
+      : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
 
   const getFormData = (): JobCardData => ({
     customerInfo,
     serviceType,
+    coverageType,
     compressorChecklist,
     dryerChecklist,
     parts,
@@ -323,7 +332,17 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     if (!customerInfo.customerName) { toast.error("Please select a customer"); return false; }
     if (!customerInfo.jobCardNo) { toast.error("Please enter a job card number"); return false; }
     if (!customerInfo.date) { toast.error("Please select a date"); return false; }
-    if (customerInfo.salesArea === "Abu Dhabi Variable") {
+    if (serviceType === "breakdown_call" && !coverageType) {
+      toast.error("Coverage Type is required for Breakdown Call.");
+      return false;
+    }
+    if (serviceType === "breakdown_call" && coverageType === "chargeable" && customerInfo.salesArea === "Abu Dhabi Variable") {
+      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
+        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
+        return false;
+      }
+    }
+    if (customerInfo.salesArea === "Abu Dhabi Variable" && serviceType !== "breakdown_call") {
       if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
         toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
         return false;
@@ -347,7 +366,17 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       toast.error(`${unpricedLabor.length} labor entr(ies) have no rate set. Please fill in all highlighted rate fields.`);
       return false;
     }
-    if (customerInfo.salesArea === "Abu Dhabi Variable") {
+    if (serviceType === "breakdown_call" && !coverageType) {
+      toast.error("Coverage Type is required for Breakdown Call.");
+      return false;
+    }
+    if (serviceType === "breakdown_call" && coverageType === "chargeable" && customerInfo.salesArea === "Abu Dhabi Variable") {
+      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
+        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
+        return false;
+      }
+    }
+    if (customerInfo.salesArea === "Abu Dhabi Variable" && serviceType !== "breakdown_call") {
       if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
         toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
         return false;
@@ -460,6 +489,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           manager_name: managerName || "",
           compressor_checklist: compressorChecklist || [],
           dryer_checklist: dryerChecklist || [],
+          coverage_type: serviceType === "breakdown_call" ? coverageType : undefined,
           service_charge: computedServiceCharge,
         }
       });
@@ -672,8 +702,15 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           <CustomerInfoSection
             data={customerInfo}
             serviceType={serviceType}
+            coverageType={coverageType}
             onChange={setCustomerInfo}
-            onServiceTypeChange={setServiceType}
+            onServiceTypeChange={(type) => {
+              setServiceType(type);
+              if (type !== "breakdown_call") {
+                setCoverageType("chargeable");
+              }
+            }}
+            onCoverageTypeChange={setCoverageType}
             managerName={managerName}
             managerId={managerId}
             engineerId={engineerId}
@@ -743,6 +780,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               salesArea={customerInfo.salesArea}
               underWarranty={customerInfo.underWarranty}
               serviceType={serviceType}
+              coverageType={coverageType}
               serviceCharge={computedServiceCharge}
               onServiceChargeChange={setServiceCharge}
             />

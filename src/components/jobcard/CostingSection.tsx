@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Calculator, TrendingUp, Percent, Receipt, Coins } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { PartItem, LaborItem, ServiceType } from "@/types/jobCard";
+import { CoverageType, PartItem, LaborItem, ServiceType } from "@/types/jobCard";
 import { computePricingSummary } from "@/lib/pricing";
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
   salesArea: string;
   underWarranty: boolean;
   serviceType: ServiceType;
+  coverageType: CoverageType;
   serviceCharge: number;
   onServiceChargeChange: (val: number) => void;
 }
@@ -32,7 +33,7 @@ const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: str
   );
 };
 
-const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, underWarranty, serviceType, serviceCharge, onServiceChargeChange }: Props) => {
+const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, underWarranty, serviceType, coverageType, serviceCharge, onServiceChargeChange }: Props) => {
   const pricingSummary = computePricingSummary({
     parts,
     labor,
@@ -42,6 +43,8 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
   });
   const { partsTotal, laborTotal, totalCost, discount, totalAfterDiscount, vat, grandTotal } = pricingSummary;
   const isAbuDhabiVariable = salesArea === "Abu Dhabi Variable";
+  const isWarrantyCoverage = serviceType === "breakdown_call" && coverageType === "warranty_amc";
+  const showManualServiceChargeInput = isAbuDhabiVariable && !isWarrantyCoverage;
 
   return (
     <div className="section-card">
@@ -69,8 +72,14 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
           <AnimatedValue value={serviceCharge} />
         </div>
 
+        {isWarrantyCoverage && (
+          <div className="rounded-3xl border border-border/60 bg-background p-3 mt-2 text-xs text-foreground/80">
+            Coverage Type is Warranty / AMC, so Service Charge is fixed at AED 0.
+          </div>
+        )}
+
         <AnimatePresence>
-          {isAbuDhabiVariable && (
+          {showManualServiceChargeInput && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}

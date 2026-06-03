@@ -12,8 +12,8 @@ export const regressionTestChecklist = [
       "[ ] Service charge input field appears when salesArea === 'Abu Dhabi Variable'",
       "[ ] Default service charge value is 0 for Abu Dhabi Variable",
       "[ ] Other regions (Dubai, Northern Emirates, Abu Dhabi) show fixed service charges",
-      "[ ] Service charge map values: Dubai=1200, Northern=1500, Abu Dhabi=2100",
-    ],
+      "[ ] Service charge map values: Dubai=1200, Northern=1500, Abu Dhabi=2100",      "[ ] Breakdown Call with Chargeable coverage applies regional pricing",
+      "[ ] Breakdown Call with Warranty / AMC coverage sets service charge to AED 0",    ],
   },
 
   // TASK 2: Labor Exclusion from Pricing
@@ -122,6 +122,20 @@ export const regressionTestChecklist = [
   },
 
   // CONSTRAIN COMPLIANCE
+  {
+    category: "UAT Workflow",
+    tests: [
+      "[ ] Engineer: Create Job with complete customer, equipment, checklist, parts, and labor details",
+      "[ ] Engineer: Save Draft and reload job for edits",
+      "[ ] Engineer: Edit Job and update pricing or parts data",
+      "[ ] Engineer: Submit Job / route to manager for approval",
+      "[ ] Manager: View assigned jobs and open job details",
+      "[ ] Manager: Approve a submitted job and verify status change",
+      "[ ] Manager: Reject a job and verify status update",
+      "[ ] Export PDF from approved job and verify Coverage Type, pricing rows, and totals",
+      "[ ] Export Excel from approved job and verify Coverage Type and saved values",
+    ],
+  },
   {
     category: "Constraint Compliance",
     tests: [

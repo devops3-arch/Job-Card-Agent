@@ -1,8 +1,8 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Building2, Calendar, Hash, Mail, Phone, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CustomerInfo, ServiceType, SalesArea } from "@/types/jobCard";
+import { CoverageType, CustomerInfo, ServiceType, SalesArea } from "@/types/jobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { sampleCustomers } from "@/data/defaultChecklist";
 
@@ -26,6 +26,8 @@ interface Props {
   managersError?: string | null;
   engineersError?: string | null;
   engineerReadOnly?: boolean;
+  coverageType: CoverageType;
+  onCoverageTypeChange: (type: CoverageType) => void;
   onManagerChange: (id: number | null, name: string) => void;
   onEngineerChange: (id: number | null, name: string) => void;
 }
@@ -69,6 +71,8 @@ const CustomerInfoSection = ({
   managersError,
   engineersError,
   engineerReadOnly,
+  coverageType,
+  onCoverageTypeChange,
   onManagerChange,
   onEngineerChange,
 }: Props) => {
@@ -82,6 +86,7 @@ const CustomerInfoSection = ({
     { label: "Job Card No. *", field: "jobCardNo", placeholder: "05", icon: Hash },
     { label: "Date *", field: "date", inputType: "date", icon: Calendar },
     { label: "Purpose of Visit *", type: "serviceType" },
+    { label: "Coverage Type *", type: "coverageType" },
     { label: "Customer Code", field: "customerCode", placeholder: "Code" },
     { label: "Attention Of", field: "attentionOf", placeholder: "Contact person", icon: User },
     { label: "Email", field: "email", placeholder: "email@example.com", icon: Mail, inputType: "email" },
@@ -90,6 +95,8 @@ const CustomerInfoSection = ({
     { label: "Sales Area *", type: "salesArea" },
     { label: "Manager Name", type: "managerName" },
   ];
+
+  const visibleFields = fields.filter((f) => f.type !== "coverageType" || serviceType === "breakdown_call");
 
   return (
     <div className="section-card">
@@ -101,7 +108,7 @@ const CustomerInfoSection = ({
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4">
-        {fields.map((f, i) => (
+        {visibleFields.map((f, i) => (
           <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
             <label className="field-label">{f.label}</label>
             {f.type === "select" ? (
@@ -126,6 +133,22 @@ const CustomerInfoSection = ({
                   ))}
                 </SelectContent>
               </Select>
+            ) : f.type === "coverageType" ? (
+              <AnimatePresence>
+                {serviceType === "breakdown_call" ? (
+                  <Select value={coverageType} onValueChange={(v) => onCoverageTypeChange(v as CoverageType)}>
+                    <SelectTrigger className={inputClass}>
+                      <SelectValue placeholder="Select coverage type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="chargeable">Chargeable</SelectItem>
+                      <SelectItem value="warranty_amc">Warranty / AMC</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input className={inputClass} disabled placeholder="Coverage type applies for Breakdown Call" />
+                )}
+              </AnimatePresence>
             ) : f.type === "salesArea" ? (
               <Select value={data.salesArea} onValueChange={(v) => update("salesArea", v)}>
                 <SelectTrigger className={inputClass}>

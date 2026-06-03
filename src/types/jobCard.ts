@@ -28,6 +28,8 @@ export interface CustomerInfo {
 
 export type ServiceType = 'service_contract' | 'warranty' | 'customer_request' | 'breakdown_call';
 
+export type CoverageType = 'chargeable' | 'warranty_amc';
+
 export type CheckStatus = 'done' | 'pending' | 'na';
 
 export interface ChecklistItem {
@@ -65,6 +67,7 @@ export interface CostSummary {
 export interface JobCardData {
   customerInfo: CustomerInfo;
   serviceType: ServiceType;
+  coverageType?: CoverageType;
   compressorChecklist: ChecklistItem[];
   dryerChecklist: ChecklistItem[];
   parts: PartItem[];

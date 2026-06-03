@@ -401,6 +401,16 @@ export function generateExcel(data: JobCardData) {
   setMerged(ws, "P45:Q45", "TOTAL", labelStyle);
   setMerged(ws, "R45:T45", pricingSummary.grandTotal.toFixed(2), baseCellStyle);
 
+  const coverageTypeLabel = data.coverageType
+    ? data.coverageType === "warranty_amc"
+      ? "Warranty / AMC"
+      : "Chargeable"
+    : "";
+
+  if (coverageTypeLabel) {
+    setMerged(ws, "A46:M46", "COVERAGE TYPE", labelStyle);
+    setMerged(ws, "N46:T46", coverageTypeLabel, baseCellStyle);
+  }
 
   setMerged(ws, "A47:D47", "TECHNICIAN:", centerBoldStyle);
   setMerged(ws, "A48:D48", "SUPERVISOR:", centerBoldStyle);
