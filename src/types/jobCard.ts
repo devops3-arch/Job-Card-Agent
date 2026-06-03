@@ -23,12 +23,11 @@ export interface CustomerInfo {
   equipmentPartNo: string;
   equipmentSerialNo: string;
   equipmentYear: string;
-  underWarranty: boolean;
 }
 
 export type ServiceType = 'service_contract' | 'warranty' | 'customer_request' | 'breakdown_call';
 
-export type CoverageType = 'chargeable' | 'warranty_amc';
+export type BreakdownCallType = 'chargeable' | 'warranty_amc';
 
 export type CheckStatus = 'done' | 'pending' | 'na';
 
@@ -67,7 +66,7 @@ export interface CostSummary {
 export interface JobCardData {
   customerInfo: CustomerInfo;
   serviceType: ServiceType;
-  coverageType?: CoverageType;
+  breakdownCallType?: BreakdownCallType;
   compressorChecklist: ChecklistItem[];
   dryerChecklist: ChecklistItem[];
   parts: PartItem[];

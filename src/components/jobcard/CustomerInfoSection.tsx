@@ -2,8 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Building2, Calendar, Hash, Mail, Phone, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CoverageType, CustomerInfo, ServiceType, SalesArea } from "@/types/jobCard";
-import { Checkbox } from "@/components/ui/checkbox";
+import { BreakdownCallType, CustomerInfo, ServiceType, SalesArea } from "@/types/jobCard";
 import { sampleCustomers } from "@/data/defaultChecklist";
 
 interface UserOption {
@@ -26,15 +25,15 @@ interface Props {
   managersError?: string | null;
   engineersError?: string | null;
   engineerReadOnly?: boolean;
-  coverageType: CoverageType;
-  onCoverageTypeChange: (type: CoverageType) => void;
+  breakdownCallType: BreakdownCallType | "";
+  onBreakdownCallTypeChange: (type: BreakdownCallType) => void;
   onManagerChange: (id: number | null, name: string) => void;
   onEngineerChange: (id: number | null, name: string) => void;
 }
 
 const serviceTypes: { value: ServiceType; label: string; emoji: string }[] = [
   { value: "service_contract", label: "Service Contract", emoji: "📋" },
-  { value: "warranty", label: "Warranty", emoji: "🛡️" },
+  { value: "warranty", label: "Under Warranty / AMC", emoji: "🛡️" },
   { value: "customer_request", label: "Customer Request", emoji: "📞" },
   { value: "breakdown_call", label: "Breakdown Call", emoji: "🔧" },
 ];
@@ -71,8 +70,8 @@ const CustomerInfoSection = ({
   managersError,
   engineersError,
   engineerReadOnly,
-  coverageType,
-  onCoverageTypeChange,
+  breakdownCallType,
+  onBreakdownCallTypeChange,
   onManagerChange,
   onEngineerChange,
 }: Props) => {
@@ -86,7 +85,7 @@ const CustomerInfoSection = ({
     { label: "Job Card No. *", field: "jobCardNo", placeholder: "05", icon: Hash },
     { label: "Date *", field: "date", inputType: "date", icon: Calendar },
     { label: "Purpose of Visit *", type: "serviceType" },
-    { label: "Coverage Type *", type: "coverageType" },
+    { label: "Breakdown Call Type *", type: "breakdownCallType" },
     { label: "Customer Code", field: "customerCode", placeholder: "Code" },
     { label: "Attention Of", field: "attentionOf", placeholder: "Contact person", icon: User },
     { label: "Email", field: "email", placeholder: "email@example.com", icon: Mail, inputType: "email" },
@@ -96,7 +95,7 @@ const CustomerInfoSection = ({
     { label: "Manager Name", type: "managerName" },
   ];
 
-  const visibleFields = fields.filter((f) => f.type !== "coverageType" || serviceType === "breakdown_call");
+  const visibleFields = fields.filter((f) => f.type !== "breakdownCallType" || serviceType === "breakdown_call");
 
   return (
     <div className="section-card">
@@ -108,142 +107,135 @@ const CustomerInfoSection = ({
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4">
-        {visibleFields.map((f, i) => (
-          <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
-            <label className="field-label">{f.label}</label>
-            {f.type === "select" ? (
-              <Select value={data.customerName} onValueChange={(v) => update("customerName", v)}>
-                <SelectTrigger className={inputClass}>
-                  <SelectValue placeholder="Select customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sampleCustomers.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : f.type === "serviceType" ? (
-              <Select value={serviceType} onValueChange={(v) => onServiceTypeChange(v as ServiceType)}>
-                <SelectTrigger className={inputClass}>
-                  <SelectValue placeholder="Select service type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {serviceTypes.map((st) => (
-                    <SelectItem key={st.value} value={st.value}>{st.emoji} {st.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : f.type === "coverageType" ? (
-              <AnimatePresence>
-                {serviceType === "breakdown_call" ? (
-                  <Select value={coverageType} onValueChange={(v) => onCoverageTypeChange(v as CoverageType)}>
-                    <SelectTrigger className={inputClass}>
-                      <SelectValue placeholder="Select coverage type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="chargeable">Chargeable</SelectItem>
-                      <SelectItem value="warranty_amc">Warranty / AMC</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input className={inputClass} disabled placeholder="Coverage type applies for Breakdown Call" />
-                )}
-              </AnimatePresence>
-            ) : f.type === "salesArea" ? (
-              <Select value={data.salesArea} onValueChange={(v) => update("salesArea", v)}>
-                <SelectTrigger className={inputClass}>
-                  <SelectValue placeholder="Select location" />
-                </SelectTrigger>
-                <SelectContent>
-                  {salesAreaOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : f.type === "engineerName" ? (
-              engineerReadOnly ? (
-                <Input
-                  className={inputClass}
-                  value={data.engineerName || ""}
-                  disabled
-                  placeholder="Engineer assigned"
-                />
-              ) : (
-                <Select value={engineerId ? String(engineerId) : ""} onValueChange={(value) => {
-                  const selected = engineerOptions.find((item) => String(item.id) === value);
-                  onEngineerChange(selected?.id ?? null, (selected?.name ?? data.engineerName) || "");
-                }}>
+        {visibleFields.map((f, i) => {
+          if (f.type === "breakdownCallType") {
+            return (
+              <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
+                <label className="field-label">{f.label}</label>
+                <Select value={breakdownCallType} onValueChange={(v) => onBreakdownCallTypeChange(v as BreakdownCallType)}>
                   <SelectTrigger className={inputClass}>
-                    <SelectValue placeholder={data.engineerName ? data.engineerName : "Select engineer"} />
+                    <SelectValue placeholder="Select breakdown call type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {engineersLoading ? (
-                      <SelectItem value="unassigned" disabled>Loading engineers...</SelectItem>
-                    ) : engineersError ? (
-                      <SelectItem value="unassigned" disabled>Failed to load engineers</SelectItem>
-                    ) : engineerOptions.length === 0 ? (
-                      <SelectItem value="unassigned" disabled>No engineers found</SelectItem>
+                    <SelectItem value="chargeable">Chargeable</SelectItem>
+                    <SelectItem value="warranty_amc">Under Warranty / AMC</SelectItem>
+                  </SelectContent>
+                </Select>
+              </motion.div>
+            );
+          }
+
+          return (
+            <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
+              <label className="field-label">{f.label}</label>
+              {f.type === "select" ? (
+                <Select value={data.customerName} onValueChange={(v) => update("customerName", v)}>
+                  <SelectTrigger className={inputClass}>
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sampleCustomers.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : f.type === "serviceType" ? (
+                <Select value={serviceType} onValueChange={(v) => onServiceTypeChange(v as ServiceType)}>
+                  <SelectTrigger className={inputClass}>
+                    <SelectValue placeholder="Select service type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {serviceTypes.map((st) => (
+                      <SelectItem key={st.value} value={st.value}>{st.emoji} {st.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : f.type === "salesArea" ? (
+                <Select value={data.salesArea} onValueChange={(v) => update("salesArea", v)}>
+                  <SelectTrigger className={inputClass}>
+                    <SelectValue placeholder="Select location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesAreaOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : f.type === "engineerName" ? (
+                engineerReadOnly ? (
+                  <Input
+                    className={inputClass}
+                    value={data.engineerName || ""}
+                    disabled
+                    placeholder="Engineer assigned"
+                  />
+                ) : (
+                  <Select value={engineerId ? String(engineerId) : ""} onValueChange={(value) => {
+                    const selected = engineerOptions.find((item) => String(item.id) === value);
+                    onEngineerChange(selected?.id ?? null, (selected?.name ?? data.engineerName) || "");
+                  }}>
+                    <SelectTrigger className={inputClass}>
+                      <SelectValue placeholder={data.engineerName ? data.engineerName : "Select engineer"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {engineersLoading ? (
+                        <SelectItem value="unassigned" disabled>Loading engineers...</SelectItem>
+                      ) : engineersError ? (
+                        <SelectItem value="unassigned" disabled>Failed to load engineers</SelectItem>
+                      ) : engineerOptions.length === 0 ? (
+                        <SelectItem value="unassigned" disabled>No engineers found</SelectItem>
+                      ) : (
+                        engineerOptions.map((engineer) => (
+                          <SelectItem key={engineer.id} value={String(engineer.id)}>{engineer.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )
+              ) : f.type === "managerName" ? (
+                <Select value={managerId ? String(managerId) : ""} onValueChange={(value) => {
+                  const selected = managerOptions.find((item) => String(item.id) === value);
+                  onManagerChange(selected?.id ?? null, (selected?.name ?? managerName) || "");
+                }}>
+                  <SelectTrigger className={inputClass}>
+                    <SelectValue placeholder={managerName ? managerName : "Select manager"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {managersLoading ? (
+                      <SelectItem value="unassigned" disabled>Loading managers...</SelectItem>
+                    ) : managersError ? (
+                      <SelectItem value="unassigned" disabled>Failed to load managers</SelectItem>
+                    ) : managerOptions.length === 0 ? (
+                      <SelectItem value="unassigned" disabled>No managers found</SelectItem>
                     ) : (
-                      engineerOptions.map((engineer) => (
-                        <SelectItem key={engineer.id} value={String(engineer.id)}>{engineer.name}</SelectItem>
+                      managerOptions.map((manager) => (
+                        <SelectItem key={manager.id} value={String(manager.id)}>{manager.name}</SelectItem>
                       ))
                     )}
                   </SelectContent>
                 </Select>
-              )
-            ) : f.type === "managerName" ? (
-              <Select value={managerId ? String(managerId) : ""} onValueChange={(value) => {
-                const selected = managerOptions.find((item) => String(item.id) === value);
-                onManagerChange(selected?.id ?? null, (selected?.name ?? managerName) || "");
-              }}>
-                <SelectTrigger className={inputClass}>
-                  <SelectValue placeholder={managerName ? managerName : "Select manager"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {managersLoading ? (
-                    <SelectItem value="unassigned" disabled>Loading managers...</SelectItem>
-                  ) : managersError ? (
-                    <SelectItem value="unassigned" disabled>Failed to load managers</SelectItem>
-                  ) : managerOptions.length === 0 ? (
-                    <SelectItem value="unassigned" disabled>No managers found</SelectItem>
-                  ) : (
-                    managerOptions.map((manager) => (
-                      <SelectItem key={manager.id} value={String(manager.id)}>{manager.name}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            ) : f.icon ? (
-              <div className="relative group">
-                <f.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors duration-300" />
+              ) : f.icon ? (
+                <div className="relative group">
+                  <f.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors duration-300" />
+                  <Input
+                    className={`pl-10 ${inputClass}`}
+                    type={f.inputType || "text"}
+                    placeholder={f.placeholder}
+                    value={(data as any)[f.field!] || ""}
+                    onChange={(e) => update(f.field as keyof CustomerInfo, e.target.value)}
+                  />
+                </div>
+              ) : (
                 <Input
-                  className={`pl-10 ${inputClass}`}
-                  type={f.inputType || "text"}
+                  className={inputClass}
                   placeholder={f.placeholder}
                   value={(data as any)[f.field!] || ""}
                   onChange={(e) => update(f.field as keyof CustomerInfo, e.target.value)}
                 />
-              </div>
-            ) : (
-              <Input
-                className={inputClass}
-                placeholder={f.placeholder}
-                value={(data as any)[f.field!] || ""}
-                onChange={(e) => update(f.field as keyof CustomerInfo, e.target.value)}
-              />
-            )}
-          </motion.div>
-        ))}
-
-        <motion.div custom={10} variants={fieldVariants} initial="hidden" animate="visible" className="flex items-center gap-3 pt-6">
-          <Checkbox
-            id="underWarranty"
-            checked={data.underWarranty}
-            onCheckedChange={(checked) => onChange({ ...data, underWarranty: checked === true })}
-            className="h-5 w-5 transition-all duration-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-          />
-          <label htmlFor="underWarranty" className="field-label cursor-pointer !mb-0 hover:text-foreground transition-colors">Under Warranty / AMC</label>
-        </motion.div>
+              )}
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ import CostingSection from "./CostingSection";
 import { defaultCompressorChecklist, defaultDryerChecklist } from "@/data/defaultChecklist";
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
-import type { JobCardData, CustomerInfo, CoverageType, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
+import type { JobCardData, CustomerInfo, BreakdownCallType, ServiceType, ChecklistItem, PartItem, LaborItem } from "@/types/jobCard";
 
 interface UserOption {
   id: number;
@@ -51,7 +51,6 @@ const defaultCustomerInfo: CustomerInfo = {
   equipmentPartNo: "",
   equipmentSerialNo: "",
   equipmentYear: "",
-  underWarranty: false
 };
 
 const sectionVariants = {
@@ -71,7 +70,7 @@ interface JobCardFormProps {
 const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) => {
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo>(defaultCustomerInfo);
   const [serviceType, setServiceType] = useState<ServiceType>("service_contract");
-  const [coverageType, setCoverageType] = useState<CoverageType>("chargeable");
+  const [breakdownCallType, setBreakdownCallType] = useState<BreakdownCallType | "">("");
   const [compressorChecklist, setCompressorChecklist] = useState<ChecklistItem[]>(defaultCompressorChecklist);
   const [dryerChecklist, setDryerChecklist] = useState<ChecklistItem[]>(defaultDryerChecklist);
   const [parts, setParts] = useState<PartItem[]>([]);
@@ -125,7 +124,6 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
                 equipmentPartNo: jobData.equipment_part_no || storedJson.equipment_part_no || "",
                 equipmentSerialNo: jobData.equipment_serial_no || storedJson.equipment_serial_no || "",
                 equipmentYear: jobData.equipment_year || storedJson.equipment_year || "",
-                underWarranty: jobData.under_warranty || false
               });
 
               if (jobData.service_type) setServiceType(jobData.service_type);
@@ -135,10 +133,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               if (storedJson.service_charge !== undefined && storedJson.service_charge !== null) {
                 setServiceCharge(Number(storedJson.service_charge) || 0);
               }
-              if (storedJson.coverage_type === "warranty_amc" || storedJson.coverage_type === "chargeable") {
-                setCoverageType(storedJson.coverage_type);
+              if (storedJson.breakdown_call_type === "warranty_amc" || storedJson.breakdown_call_type === "chargeable") {
+                setBreakdownCallType(storedJson.breakdown_call_type);
+              } else if (storedJson.coverage_type === "warranty_amc" || storedJson.coverage_type === "chargeable") {
+                setBreakdownCallType(storedJson.coverage_type);
               } else if (jobData.service_type === "breakdown_call") {
-                setCoverageType("chargeable");
+                setBreakdownCallType("");
               }
 
               if (data.data.parts && data.data.parts.length > 0) {
@@ -211,6 +211,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
             if (existingJob.managerName) setManagerName(existingJob.managerName);
             if (existingJob.manager_name) setManagerName(existingJob.manager_name);
             if (existingJob.status?.toUpperCase() === "APPROVED") setIsApproved(true);
+            if (existingJob.service_type) setServiceType(existingJob.service_type);
+            else if (existingJob.serviceType) setServiceType(existingJob.serviceType);
+            if (existingJob.breakdown_call_type) setBreakdownCallType(existingJob.breakdown_call_type);
+            else if (existingJob.breakdownCallType) setBreakdownCallType(existingJob.breakdownCallType);
+            else if (existingJob.coverage_type) setBreakdownCallType(existingJob.coverage_type);
+            else if (existingJob.coverageType) setBreakdownCallType(existingJob.coverageType);
           }
         } catch (e) {
           console.error("Failed to load mock job", e);
@@ -306,16 +312,18 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     return steps;
   }, [customerInfo, doneChecklist, parts.length]);
 
-  const computedServiceCharge = serviceType === "breakdown_call" && coverageType === "warranty_amc"
+  const computedServiceCharge = serviceType === "warranty"
     ? 0
-    : customerInfo.salesArea === "Abu Dhabi Variable"
-      ? serviceCharge
-      : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
+    : (serviceType === "breakdown_call" && breakdownCallType === "warranty_amc")
+      ? 0
+      : customerInfo.salesArea === "Abu Dhabi Variable"
+        ? serviceCharge
+        : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
 
   const getFormData = (): JobCardData => ({
     customerInfo,
     serviceType,
-    coverageType,
+    breakdownCallType: serviceType === "breakdown_call" ? (breakdownCallType || undefined) : undefined,
     compressorChecklist,
     dryerChecklist,
     parts,
@@ -332,17 +340,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     if (!customerInfo.customerName) { toast.error("Please select a customer"); return false; }
     if (!customerInfo.jobCardNo) { toast.error("Please enter a job card number"); return false; }
     if (!customerInfo.date) { toast.error("Please select a date"); return false; }
-    if (serviceType === "breakdown_call" && !coverageType) {
-      toast.error("Coverage Type is required for Breakdown Call.");
+    if (serviceType === "breakdown_call" && !breakdownCallType) {
+      toast.error("Breakdown Call Type is required for Breakdown Call.");
       return false;
     }
-    if (serviceType === "breakdown_call" && coverageType === "chargeable" && customerInfo.salesArea === "Abu Dhabi Variable") {
-      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
-        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
-        return false;
-      }
-    }
-    if (customerInfo.salesArea === "Abu Dhabi Variable" && serviceType !== "breakdown_call") {
+    const isWarranty = serviceType === "warranty" || (serviceType === "breakdown_call" && breakdownCallType === "warranty_amc");
+    if (!isWarranty && customerInfo.salesArea === "Abu Dhabi Variable") {
       if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
         toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
         return false;
@@ -366,17 +369,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       toast.error(`${unpricedLabor.length} labor entr(ies) have no rate set. Please fill in all highlighted rate fields.`);
       return false;
     }
-    if (serviceType === "breakdown_call" && !coverageType) {
-      toast.error("Coverage Type is required for Breakdown Call.");
+    if (serviceType === "breakdown_call" && !breakdownCallType) {
+      toast.error("Breakdown Call Type is required for Breakdown Call.");
       return false;
     }
-    if (serviceType === "breakdown_call" && coverageType === "chargeable" && customerInfo.salesArea === "Abu Dhabi Variable") {
-      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
-        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
-        return false;
-      }
-    }
-    if (customerInfo.salesArea === "Abu Dhabi Variable" && serviceType !== "breakdown_call") {
+    const isWarranty = serviceType === "warranty" || (serviceType === "breakdown_call" && breakdownCallType === "warranty_amc");
+    if (!isWarranty && customerInfo.salesArea === "Abu Dhabi Variable") {
       if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
         toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
         return false;
@@ -413,9 +411,13 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     if (role === 'manager' && !validatePricing()) return;
 
     // CALCULATE PRICING
-    const computedServiceCharge = customerInfo.salesArea === "Abu Dhabi Variable"
-      ? serviceCharge
-      : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
+    const computedServiceCharge = serviceType === "warranty"
+      ? 0
+      : (serviceType === "breakdown_call" && breakdownCallType === "warranty_amc")
+        ? 0
+        : customerInfo.salesArea === "Abu Dhabi Variable"
+          ? serviceCharge
+          : SERVICE_CHARGE_MAP[customerInfo.salesArea] || 0;
 
     const pricingSummary = computePricingSummary({
       parts: parts.map((item) => ({
@@ -473,7 +475,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         ref_no: customerInfo.refNo || undefined,
         sales_area: customerInfo.salesArea || undefined,
         service_type: serviceType || undefined,
-        under_warranty: Boolean(customerInfo.underWarranty),
+
         customer_code: customerInfo.customerCode || undefined,
         attention_of: customerInfo.attentionOf || undefined,
         email: customerInfo.email || undefined,
@@ -489,7 +491,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           manager_name: managerName || "",
           compressor_checklist: compressorChecklist || [],
           dryer_checklist: dryerChecklist || [],
-          coverage_type: serviceType === "breakdown_call" ? coverageType : undefined,
+          breakdown_call_type: serviceType === "breakdown_call" ? breakdownCallType : undefined,
           service_charge: computedServiceCharge,
         }
       });
@@ -702,15 +704,15 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           <CustomerInfoSection
             data={customerInfo}
             serviceType={serviceType}
-            coverageType={coverageType}
+            breakdownCallType={breakdownCallType}
             onChange={setCustomerInfo}
             onServiceTypeChange={(type) => {
               setServiceType(type);
               if (type !== "breakdown_call") {
-                setCoverageType("chargeable");
+                setBreakdownCallType("");
               }
             }}
-            onCoverageTypeChange={setCoverageType}
+            onBreakdownCallTypeChange={setBreakdownCallType}
             managerName={managerName}
             managerId={managerId}
             engineerId={engineerId}
@@ -778,9 +780,9 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               discountPercentage={discountPercentage}
               onDiscountChange={setDiscountPercentage}
               salesArea={customerInfo.salesArea}
-              underWarranty={customerInfo.underWarranty}
+
               serviceType={serviceType}
-              coverageType={coverageType}
+              breakdownCallType={breakdownCallType}
               serviceCharge={computedServiceCharge}
               onServiceChargeChange={setServiceCharge}
             />

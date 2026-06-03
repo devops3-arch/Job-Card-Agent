@@ -62,9 +62,13 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
         const compressorChecklist = Array.isArray(storedJson.compressor_checklist) ? storedJson.compressor_checklist : [];
         const dryerChecklist      = Array.isArray(storedJson.dryer_checklist)      ? storedJson.dryer_checklist      : [];
 
-        const serviceChargeValue = job?.sales_area === "Abu Dhabi Variable"
-            ? Number(storedJson.service_charge ?? 0)
-            : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
+        const serviceChargeValue = job?.service_type === "warranty"
+            ? 0
+            : (job?.service_type === "breakdown_call" && (storedJson.breakdown_call_type === "warranty_amc" || storedJson.coverage_type === "warranty_amc"))
+                ? 0
+                : job?.sales_area === "Abu Dhabi Variable"
+                    ? Number(storedJson.service_charge ?? 0)
+                    : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
 
         return {
             customerInfo: {
@@ -78,9 +82,14 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                 contactNo:    job?.contact_no || "",
                 salesArea:    job?.sales_area || "",
                 engineerName: job?.engineer_name || "",
-                underWarranty: !!job?.under_warranty,
+                equipmentModel: job?.equipment_model || storedJson.equipment_model || "",
+                equipmentBrandDescription: job?.equipment_brand_description || storedJson.equipment_brand_description || "",
+                equipmentPartNo: job?.equipment_part_no || storedJson.equipment_part_no || "",
+                equipmentSerialNo: job?.equipment_serial_no || storedJson.equipment_serial_no || "",
+                equipmentYear: job?.equipment_year || storedJson.equipment_year || "",
             },
             serviceType:         (job?.service_type || "service_contract") as any,
+            breakdownCallType:   job?.service_type === "breakdown_call" ? (storedJson.breakdown_call_type || storedJson.coverage_type) : undefined,
             compressorChecklist,
             dryerChecklist,
             parts: parts.map(p => {
@@ -127,9 +136,13 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             } catch {
                 storedJson = {};
             }
-            const serviceChargeValue = job?.sales_area === "Abu Dhabi Variable"
-                ? Number(storedJson.service_charge ?? 0)
-                : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
+            const serviceChargeValue = job?.service_type === "warranty"
+                ? 0
+                : (job?.service_type === "breakdown_call" && (storedJson.breakdown_call_type === "warranty_amc" || storedJson.coverage_type === "warranty_amc"))
+                    ? 0
+                    : job?.sales_area === "Abu Dhabi Variable"
+                        ? Number(storedJson.service_charge ?? 0)
+                        : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
             const taxable    = partsTotal + serviceChargeValue;
             const vatAmount  = taxable * 0.05;
             const grandTotal = taxable + vatAmount;

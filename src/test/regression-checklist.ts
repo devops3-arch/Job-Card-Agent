@@ -12,8 +12,8 @@ export const regressionTestChecklist = [
       "[ ] Service charge input field appears when salesArea === 'Abu Dhabi Variable'",
       "[ ] Default service charge value is 0 for Abu Dhabi Variable",
       "[ ] Other regions (Dubai, Northern Emirates, Abu Dhabi) show fixed service charges",
-      "[ ] Service charge map values: Dubai=1200, Northern=1500, Abu Dhabi=2100",      "[ ] Breakdown Call with Chargeable coverage applies regional pricing",
-      "[ ] Breakdown Call with Warranty / AMC coverage sets service charge to AED 0",    ],
+      "[ ] Service charge map values: Dubai=1200, Northern=1500, Abu Dhabi=2100",      "[ ] Breakdown Call with Chargeable Breakdown Call Type applies regional pricing",
+      "[ ] Breakdown Call with Under Warranty / AMC Breakdown Call Type sets service charge to AED 0",    ],
   },
 
   // TASK 2: Labor Exclusion from Pricing
@@ -132,8 +132,8 @@ export const regressionTestChecklist = [
       "[ ] Manager: View assigned jobs and open job details",
       "[ ] Manager: Approve a submitted job and verify status change",
       "[ ] Manager: Reject a job and verify status update",
-      "[ ] Export PDF from approved job and verify Coverage Type, pricing rows, and totals",
-      "[ ] Export Excel from approved job and verify Coverage Type and saved values",
+      "[ ] Export PDF from approved job and verify Breakdown Call Type, pricing rows, and totals",
+      "[ ] Export Excel from approved job and verify Breakdown Call Type and saved values",
     ],
   },
   {

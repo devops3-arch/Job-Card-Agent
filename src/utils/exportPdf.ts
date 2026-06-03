@@ -218,18 +218,33 @@ export async function generatePDF(data: JobCardData) {
 
   y = (doc as any).lastAutoTable.finalY + 8.5;
 
-  const coverageLabel = data.coverageType
-    ? data.coverageType === "warranty_amc"
-      ? "Warranty / AMC"
-      : "Chargeable"
-    : "";
+  // Purpose of Visit mapping
+  let purposeLabel = "";
+  if (data.serviceType === "service_contract") purposeLabel = "Service Contract";
+  else if (data.serviceType === "warranty") purposeLabel = "Under Warranty / AMC";
+  else if (data.serviceType === "customer_request") purposeLabel = "Customer Request";
+  else if (data.serviceType === "breakdown_call") purposeLabel = "Breakdown Call";
 
-  if (coverageLabel) {
+  if (purposeLabel) {
     doc.setFontSize(10.5);
     doc.setFont("helvetica", "bold");
-    doc.text("Coverage Type:", 14, y);
+    doc.text("Purpose Of Visit:", 14, y);
+    const purposeTextWidth = doc.getTextWidth("Purpose Of Visit:");
     doc.setFont("helvetica", "normal");
-    doc.text(coverageLabel, 48, y);
+    doc.text(purposeLabel, 14 + purposeTextWidth + 3, y);
+    y += 7;
+  }
+
+  if (data.serviceType === "breakdown_call" && data.breakdownCallType) {
+    const breakdownCallTypeLabel = data.breakdownCallType === "warranty_amc"
+      ? "Under Warranty / AMC"
+      : "Chargeable";
+    doc.setFontSize(10.5);
+    doc.setFont("helvetica", "bold");
+    doc.text("Breakdown Call Type:", 14, y);
+    const labelWidth = doc.getTextWidth("Breakdown Call Type:");
+    doc.setFont("helvetica", "normal");
+    doc.text(breakdownCallTypeLabel, 14 + labelWidth + 3, y);
     y += 7;
   }
 
