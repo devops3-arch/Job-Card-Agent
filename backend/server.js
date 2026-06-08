@@ -149,6 +149,17 @@ const mapLabor = (l) => {
     };
 };
 
+const INCOMPLETE_JOB_ERROR = "Job card is incomplete. Please complete all required fields.";
+
+const isChecklistComplete = (items) => {
+  const allowedStatuses = new Set(["done", "na", "pending"]);
+  return (
+    Array.isArray(items) &&
+    items.length > 0 &&
+    items.every((item) => allowedStatuses.has(String(item?.status ?? "").trim().toLowerCase()))
+  );
+};
+
 const SYSTEM_USER = "system_user";
 
 // ─── Health checks ────────────────────────────────────────────────────────────
@@ -380,6 +391,7 @@ app.post(
 
     // Extract engineer ID from authenticated user
     const userId = req.user?.id;
+    const initialStatus = req.user?.role === "engineer" ? JOB_STATUSES.PENDING_APPROVAL : JOB_STATUSES.DRAFT;
     req.logger.debug("Creating job for engineer", {
       engineerId: userId,
     });
@@ -410,8 +422,19 @@ app.post(
     const discount_percentage = toNum(req.body?.discount_percentage);
     const partsInput = Array.isArray(req.body?.parts) ? req.body.parts : [];
     const laborInput = Array.isArray(req.body?.labor) ? req.body.labor : [];
-    const partsJson = partsInput.map(mapPart);
-    const laborJson = laborInput.map(mapLabor);
+    const isEngineerRequest = req.user?.role === "engineer";
+    const partsJson = partsInput.map((part) => {
+      const mapped = mapPart(part);
+      return isEngineerRequest
+        ? { ...mapped, unit_price: 0, total: 0 }
+        : mapped;
+    });
+    const laborJson = laborInput.map((entry) => {
+      const mapped = mapLabor(entry);
+      return isEngineerRequest
+        ? { ...mapped, rate: 0, total: 0 }
+        : mapped;
+    });
     function sanitizeJson(value) {
       return JSON.parse(JSON.stringify(value));
     }
@@ -422,17 +445,101 @@ app.post(
       ...sanitizeJson(typeof req.body?.job_data === "object" && req.body.job_data ? req.body.job_data : {}),
       parts: safeParts,
       labor: safeLabor,
-      compressor_checklist: sanitizeJson(req.body?.compressor_checklist ?? []),
-      dryer_checklist: sanitizeJson(req.body?.dryer_checklist ?? []),
+      compressor_checklist: sanitizeJson(req.body?.job_data?.compressor_checklist ?? req.body?.compressor_checklist ?? []),
+      dryer_checklist: sanitizeJson(req.body?.job_data?.dryer_checklist ?? req.body?.dryer_checklist ?? []),
     };
 
-
-    // ONLY validation: customer_name and equipment_name are required
-    if (!customer_name) {
-        return sendError(res, 400, "Customer name is required");
+    if (isEngineerRequest) {
+      safeJobData.service_charge = 0;
     }
-    if (!equipment_name) {
-        return sendError(res, 400, "Equipment name is required");
+
+    // PRODUCTION VALIDATION: All mandatory fields
+    // ─── MANDATORY CUSTOMER INFORMATION ───
+    if (!customer_name?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!ref_no?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!job_card_no?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!job_date?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!service_type?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!customer_code?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!attention_of?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!contact_no?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!sales_area?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+
+    // ─── MANDATORY EQUIPMENT DETAILS ───
+    if (!equipment_model?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!equipment_brand_description?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!equipment_part_no?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!equipment_serial_no?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    if (!equipment_year?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+
+    // ─── MANDATORY CHECKLIST VALIDATION ───
+    const compressorChecklist = safeJobData?.compressor_checklist || [];
+    const dryerChecklist = safeJobData?.dryer_checklist || [];
+
+    if (!isChecklistComplete(compressorChecklist) || !isChecklistComplete(dryerChecklist)) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+
+    // ─── MANDATORY PARTS VALIDATION ───
+    if (!Array.isArray(safeParts) || safeParts.length === 0) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    for (let i = 0; i < safeParts.length; i++) {
+        const part = safeParts[i];
+        if (!part.part_name?.trim()) {
+        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+        }
+        if (!part.part_number?.trim()) {
+        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+        }
+        if (!part.quantity || Number(part.quantity) <= 0) {
+        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+        }
+    }
+
+    // ─── MANDATORY LABOR VALIDATION ───
+    if (!Array.isArray(safeLabor) || safeLabor.length === 0) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    for (let i = 0; i < safeLabor.length; i++) {
+        const labor = safeLabor[i];
+        if (!labor.hours || Number(labor.hours) <= 0) {
+        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+        }
+    }
+
+    // ─── MANDATORY MANAGER NAME ───
+    const engineerNameFromJobData = safeJobData?.engineer_name;
+    if (!engineerNameFromJobData?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
     }
 
     const managerIdPayload = req.body?.manager_id ?? req.body?.job_data?.manager_id;
@@ -452,6 +559,11 @@ app.post(
       if (!manager_id) {
         throw new AppError("Selected manager not found", 400, "MANAGER_NOT_FOUND");
       }
+    }
+    
+    // Manager Name is mandatory
+    if (!manager_id) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
     }
 
     const engineerIdPayload = req.body?.engineer_id ?? req.body?.job_data?.engineer_id;
@@ -520,12 +632,12 @@ app.post(
             attention_of,
             email,
             contact_no,
-            other_expenses,
-            discount_percentage,
+            isEngineerRequest ? 0 : other_expenses,
+            isEngineerRequest ? 0 : discount_percentage,
             JSON.stringify(safeParts),
             JSON.stringify(safeLabor),
             JSON.stringify(safeJobData),
-            JOB_STATUSES.DRAFT,
+            initialStatus,
             userId,
             manager_id
         ];
@@ -616,6 +728,9 @@ app.post(
           stack: err.stack,
           route: req.originalUrl
         });
+        if (err instanceof AppError) {
+          return sendError(res, err.statusCode || 400, err.message, err.errorCode || "VALIDATION_ERROR");
+        }
         return sendError(res, 500, "Failed to create job", err.message);
     } finally {
         client.release();
@@ -843,9 +958,7 @@ app.get(
         throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
       }
       if (req.user.role === "manager" && job.manager_id !== req.user.id) {
-        if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
-          throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
-        }
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
       }
 
       const [partsResult, laborResult] = await Promise.all([
@@ -907,8 +1020,71 @@ app.put(
       throw new AppError("Engineers can only update their own jobs", 403, "FORBIDDEN");
     }
     if (req.user.role === "manager" && job.manager_id !== req.user.id) {
-      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
-        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+    }
+
+    // ─── PRODUCTION VALIDATION: Required payload on update ───
+    const requiredStringFields = [
+      req.body.customer_name,
+      req.body.ref_no,
+      req.body.job_card_no,
+      req.body.job_date,
+      req.body.service_type,
+      req.body.customer_code,
+      req.body.attention_of,
+      req.body.contact_no,
+      req.body.sales_area,
+      req.body.equipment_model,
+      req.body.equipment_brand_description,
+      req.body.equipment_part_no,
+      req.body.equipment_serial_no,
+      req.body.equipment_year,
+    ];
+
+    if (requiredStringFields.some((value) => typeof value !== "string" || !value.trim())) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+
+    const jobDataToUpdate = req.body.job_data;
+    if (!jobDataToUpdate || typeof jobDataToUpdate !== "object") {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+
+    if (!jobDataToUpdate.engineer_name || !String(jobDataToUpdate.engineer_name).trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+
+    const compressorChecklistToValidate = jobDataToUpdate.compressor_checklist;
+    const dryerChecklistToValidate = jobDataToUpdate.dryer_checklist;
+    if (!isChecklistComplete(compressorChecklistToValidate) || !isChecklistComplete(dryerChecklistToValidate)) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+
+    if (!Array.isArray(req.body.parts) || req.body.parts.length === 0) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    for (let i = 0; i < req.body.parts.length; i++) {
+      const part = req.body.parts[i];
+      if (!part.description?.trim() && !part.part_name?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+      }
+      if (!part.partNumber?.trim() && !part.part_number?.trim()) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+      }
+      const qty = Number(part.qty ?? part.quantity);
+      if (!qty || qty <= 0) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+      }
+    }
+
+    if (!Array.isArray(req.body.labor) || req.body.labor.length === 0) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
+    for (let i = 0; i < req.body.labor.length; i++) {
+      const laborRow = req.body.labor[i];
+      const hours = Number(laborRow.hours);
+      if (!hours || hours <= 0) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
       }
     }
 
@@ -916,8 +1092,19 @@ app.put(
     const values = [];
     let index = 1;
 
+    if (req.user.role === "engineer") {
+      req.body.other_expenses = 0;
+      req.body.discount_percentage = 0;
+      if (req.body.job_data && typeof req.body.job_data === "object") {
+        req.body.job_data.service_charge = 0;
+      }
+    }
+
     const managerIdPayload = req.body?.manager_id ?? req.body?.job_data?.manager_id;
     const managerNamePayload = req.body?.manager_name ?? req.body?.job_data?.manager_name;
+    if ((managerIdPayload === undefined || managerIdPayload === null) && !managerNamePayload) {
+      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+    }
     if (managerIdPayload !== undefined || managerNamePayload !== undefined) {
       if (managerIdPayload === null) {
         updates.push(`manager_id = $${index}`);
@@ -1002,6 +1189,12 @@ app.put(
       }
     }
 
+    if (req.user.role === "engineer") {
+      updates.push(`status = $${index}`);
+      values.push(JOB_STATUSES.PENDING_APPROVAL);
+      index += 1;
+    }
+
     
     if (updates.length === 0) {
       throw new AppError("No updatable fields were provided", 400, "NO_UPDATE_FIELDS");
@@ -1021,6 +1214,60 @@ app.put(
         console.error(err.message);
         console.error(err.stack);
         throw err;
+      }
+
+      if (req.user.role === "engineer") {
+        const existingPartsResult = await client.query(
+          "SELECT id, unit_price FROM job_parts WHERE job_id = $1",
+          [jobId]
+        );
+        const existingLaborResult = await client.query(
+          "SELECT id, rate FROM job_labor WHERE job_id = $1",
+          [jobId]
+        );
+
+        const partPriceById = new Map(
+          existingPartsResult.rows.map((row) => [String(row.id), toNum(row.unit_price)])
+        );
+        const laborRateById = new Map(
+          existingLaborResult.rows.map((row) => [String(row.id), toNum(row.rate)])
+        );
+
+        if (Array.isArray(req.body.parts)) {
+          for (const part of req.body.parts) {
+            const partId = part?.id != null ? String(part.id) : null;
+            const providedUnitPrice = toNum(part?.unitPrice ?? part?.unit_price);
+
+            if (partId && partPriceById.has(partId)) {
+              const preserved = partPriceById.get(partId) ?? 0;
+              if (providedUnitPrice !== preserved) {
+                part.unitPrice = preserved;
+                part.unit_price = preserved;
+              }
+            } else {
+              part.unitPrice = 0;
+              part.unit_price = 0;
+            }
+          }
+        }
+
+        if (Array.isArray(req.body.labor)) {
+          for (const laborRow of req.body.labor) {
+            const laborId = laborRow?.id != null ? String(laborRow.id) : null;
+            const providedRate = toNum(laborRow?.ratePerHour ?? laborRow?.rate);
+
+            if (laborId && laborRateById.has(laborId)) {
+              const preserved = laborRateById.get(laborId) ?? 0;
+              if (providedRate !== preserved) {
+                laborRow.ratePerHour = preserved;
+                laborRow.rate = preserved;
+              }
+            } else {
+              laborRow.ratePerHour = 0;
+              laborRow.rate = 0;
+            }
+          }
+        }
       }
 
       const updateQuery = `UPDATE job_master SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING *`;
@@ -1235,7 +1482,7 @@ app.put(
 app.post(
   "/jobs/:id/pricing",
   requireAuth,
-  requireRole("engineer", "manager", "admin"),
+  requireRole("manager", "admin"),
   validate({ params: idParamSchema, body: pricingSchema }),
   asyncHandler(async (req, res) => {
     const jobId = Number(req.params.id);
@@ -1261,9 +1508,7 @@ app.post(
       throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
     }
     if (req.user.role === "manager" && job.manager_id !== req.user.id) {
-      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
-        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
-      }
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
     }
 
     const body = req.body ?? {};
@@ -1505,7 +1750,7 @@ app.post(
 app.put(
   "/jobs/:id/status",
   requireAuth,
-  requireRole("engineer", "manager", "admin"),
+  requireRole("manager", "admin"),
   validate({ params: idParamSchema, body: statusUpdateSchema }),
   asyncHandler(async (req, res) => {
     const jobId = Number(req.params.id);
@@ -1543,6 +1788,10 @@ app.put(
 
       const job = jobResult.rows[0];
       const currentStatus = normalizeStatus(job.status);
+
+      if (req.user.role === "manager" && job.manager_id !== req.user.id) {
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
+      }
 
       if (currentStatus === JOB_STATUSES.DELETED) {
         throw new AppError("Deleted jobs cannot be modified", 400, "JOB_DELETED");
@@ -1759,9 +2008,7 @@ app.delete(
       }
 
       if (req.user.role === "manager" && job.manager_id !== req.user.id) {
-        if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
-          throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
-        }
+        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
       }
 
       await client.query(
@@ -2440,9 +2687,7 @@ app.get(
       throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
     }
     if (req.user.role === "manager" && job.manager_id !== req.user.id) {
-      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
-        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
-      }
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
     }
 
     const documents = await pdfGovernanceService.getApprovedDocumentsByJob(jobId);
@@ -2544,9 +2789,7 @@ app.post(
 
     // Enforce strict ownership / assignment checks before uploading approved documents
     if (req.user.role === "manager" && job.manager_id !== req.user.id) {
-      if (job.manager_id !== null && job.manager_id !== undefined && job.manager_id !== req.user.id) {
-        throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
-      }
+      throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
     }
 
     if (job.status !== "APPROVED") {

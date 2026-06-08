@@ -336,21 +336,192 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     serviceCharge: computedServiceCharge,
   });
 
+  // ─── MANDATORY CUSTOMER INFORMATION VALIDATION ───
+  const validateCustomerInfo = (): boolean => {
+    // Required fields: Customer Name, Ref No, Job Card No, Date, Purpose of Visit, Customer Code, 
+    // Attention Of, Contact No, Engineer Name, Sales Area, Manager Name
+    
+    if (!customerInfo.customerName?.trim()) { 
+      toast.error("Customer Name is required"); 
+      return false; 
+    }
+    if (!customerInfo.refNo?.trim()) { 
+      toast.error("Ref No is required"); 
+      return false; 
+    }
+    if (!customerInfo.jobCardNo?.trim()) { 
+      toast.error("Job Card No is required"); 
+      return false; 
+    }
+    if (!customerInfo.date?.trim()) { 
+      toast.error("Date is required"); 
+      return false; 
+    }
+    if (!serviceType) { 
+      toast.error("Purpose of Visit (Service Type) is required"); 
+      return false; 
+    }
+    if (!customerInfo.customerCode?.trim()) { 
+      toast.error("Customer Code is required"); 
+      return false; 
+    }
+    if (!customerInfo.attentionOf?.trim()) { 
+      toast.error("Attention Of is required"); 
+      return false; 
+    }
+    if (!customerInfo.contactNo?.trim()) { 
+      toast.error("Contact No is required"); 
+      return false; 
+    }
+    if (!customerInfo.engineerName?.trim()) { 
+      toast.error("Engineer Name is required"); 
+      return false; 
+    }
+    if (!customerInfo.salesArea?.trim()) { 
+      toast.error("Sales Area is required"); 
+      return false; 
+    }
+    if (!managerName?.trim()) { 
+      toast.error("Manager Name is required"); 
+      return false; 
+    }
+    
+    return true;
+  };
+
+  // ─── MANDATORY EQUIPMENT DETAILS VALIDATION ───
+  const validateEquipment = (): boolean => {
+    // Required: Equipment Model, Brand Description, Part No, Serial No, Year
+    
+    if (!customerInfo.equipmentModel?.trim()) { 
+      toast.error("Equipment Model is required"); 
+      return false; 
+    }
+    if (!customerInfo.equipmentBrandDescription?.trim()) { 
+      toast.error("Brand Description is required"); 
+      return false; 
+    }
+    if (!customerInfo.equipmentPartNo?.trim()) { 
+      toast.error("Equipment Part No is required"); 
+      return false; 
+    }
+    if (!customerInfo.equipmentSerialNo?.trim()) { 
+      toast.error("Equipment Serial No is required"); 
+      return false; 
+    }
+    if (!customerInfo.equipmentYear?.trim()) { 
+      toast.error("Equipment Year is required"); 
+      return false; 
+    }
+    
+    return true;
+  };
+
+  // ─── CHECKLIST VALIDATION ───
+  const validateChecklist = (): boolean => {
+    const allowedStatuses = new Set(["done", "na", "pending"]);
+
+    if (!Array.isArray(compressorChecklist) || compressorChecklist.length === 0) {
+      toast.error("Checklist status is required for all compressor items.");
+      return false;
+    }
+    if (!Array.isArray(dryerChecklist) || dryerChecklist.length === 0) {
+      toast.error("Checklist status is required for all dryer items.");
+      return false;
+    }
+
+    const invalidCompressor = compressorChecklist.filter(
+      (item) => !allowedStatuses.has(String(item?.status ?? "").trim().toLowerCase())
+    );
+    const invalidDryer = dryerChecklist.filter(
+      (item) => !allowedStatuses.has(String(item?.status ?? "").trim().toLowerCase())
+    );
+
+    if (invalidCompressor.length > 0 || invalidDryer.length > 0) {
+      toast.error("Checklist contains invalid status values.");
+      return false;
+    }
+    
+    return true;
+  };
+
+  // ─── PARTS VALIDATION ───
+  const validateParts = (): boolean => {
+    if (!Array.isArray(parts) || parts.length === 0) {
+      toast.error("At least one part is required.");
+      return false;
+    }
+
+    // For each part: Description, Number, Quantity > 0
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!part.description?.trim()) {
+        toast.error(`Part ${i + 1}: Description is required`);
+        return false;
+      }
+      if (!part.partNumber?.trim()) {
+        toast.error(`Part ${i + 1}: Part Number is required`);
+        return false;
+      }
+      if (!part.qty || Number(part.qty) <= 0) {
+        toast.error(`Part ${i + 1}: Quantity must be greater than 0`);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // ─── LABOR VALIDATION ───
+  const validateLabor = (): boolean => {
+    if (!Array.isArray(labor) || labor.length === 0) {
+      toast.error("At least one labor entry is required.");
+      return false;
+    }
+
+    // For each labor: Hours > 0 (Description is optional)
+    for (let i = 0; i < labor.length; i++) {
+      const item = labor[i];
+      if (!item.hours || Number(item.hours) <= 0) {
+        toast.error(`Labor ${i + 1}: Hours must be greater than 0`);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // ─── MAIN VALIDATION FUNCTION ───
   const validate = (): boolean => {
-    if (!customerInfo.customerName) { toast.error("Please select a customer"); return false; }
-    if (!customerInfo.jobCardNo) { toast.error("Please enter a job card number"); return false; }
-    if (!customerInfo.date) { toast.error("Please select a date"); return false; }
+    // Validate customer info (all required)
+    if (!validateCustomerInfo()) return false;
+    
+    // Validate equipment details (all required)
+    if (!validateEquipment()) return false;
+    
+    // Validate checklists (all items must have status)
+    if (!validateChecklist()) return false;
+    
+    // Validate parts (at least one row required)
+    if (!validateParts()) return false;
+    
+    // Validate labor (at least one row required)
+    if (!validateLabor()) return false;
+    
+    // Validate Service Type for breakdown calls
     if (serviceType === "breakdown_call" && !breakdownCallType) {
       toast.error("Breakdown Call Type is required for Breakdown Call.");
       return false;
     }
+    
+    // Validate Service Charge for Abu Dhabi Variable
     const isWarranty = serviceType === "warranty" || (serviceType === "breakdown_call" && breakdownCallType === "warranty_amc");
-    if (!isWarranty && customerInfo.salesArea === "Abu Dhabi Variable") {
-      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
-        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
+    const showManualServiceChargeOverride = role === "manager" && !isWarranty && customerInfo.salesArea === "Abu Dhabi Variable";
+    if (showManualServiceChargeOverride) {
+      if (Number.isNaN(serviceCharge) || serviceCharge < 0) {
+        toast.error("Please enter a valid manual service charge.");
         return false;
       }
     }
+    
     return true;
   };
 
@@ -374,9 +545,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       return false;
     }
     const isWarranty = serviceType === "warranty" || (serviceType === "breakdown_call" && breakdownCallType === "warranty_amc");
-    if (!isWarranty && customerInfo.salesArea === "Abu Dhabi Variable") {
-      if (Number.isNaN(serviceCharge) || serviceCharge <= 0) {
-        toast.error("Service Charge is required and must be greater than 0 for Abu Dhabi Variable.");
+    const showManualServiceChargeOverride = role === "manager" && !isWarranty && customerInfo.salesArea === "Abu Dhabi Variable";
+    if (showManualServiceChargeOverride) {
+      if (Number.isNaN(serviceCharge) || serviceCharge < 0) {
+        toast.error("Please enter a valid manual service charge.");
         return false;
       }
     }
@@ -530,6 +702,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           toast.error(normalizeApiError(resData));
           return;
         }
+      }
+
+      if (role !== 'manager') {
+        toast.success("Job Card Saved Successfully and Submitted for Manager Review.");
+        window.dispatchEvent(new Event('jobsUpdated'));
+        return;
       }
 
       // SAVE PRICING
@@ -780,11 +958,11 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               discountPercentage={discountPercentage}
               onDiscountChange={setDiscountPercentage}
               salesArea={customerInfo.salesArea}
-
               serviceType={serviceType}
-              breakdownCallType={breakdownCallType}
+              breakdownCallType={breakdownCallType || undefined}
               serviceCharge={computedServiceCharge}
               onServiceChargeChange={setServiceCharge}
+              role={role}
             />
           </motion.div>
         )}

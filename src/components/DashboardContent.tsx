@@ -145,7 +145,7 @@ const DashboardContent = ({}: DashboardContentProps) => {
                     <h2 className="text-lg font-bold text-slate-800">Job Details</h2>
                     <button onClick={handleCloseForm} className="text-sm font-semibold text-slate-600 bg-slate-100 px-3 py-2 rounded-lg">← Back</button>
                 </div>
-                <JobCardForm role="manager" jobId={selectedJob?.id} onClose={handleCloseForm} />
+                <JobCardForm role={userRole === 'manager' ? 'manager' : 'engineer'} jobId={selectedJob?.id} onClose={handleCloseForm} />
             </div>
         );
     }
@@ -173,13 +173,30 @@ const DashboardContent = ({}: DashboardContentProps) => {
         );
     }
 
-    if (isFormOpen && selectedJob?.id) {
+    if (isFormOpen && selectedJob?.id && userRole === 'manager') {
         return (
             <PricingPanel
                 jobId={selectedJob.id}
                 onClose={handleCloseForm}
                 onApproved={() => { handleCloseForm(); window.dispatchEvent(new Event('jobsUpdated')); }}
             />
+        );
+    }
+
+    if (isFormOpen && selectedJob?.id) {
+        return (
+            <div className="max-w-[1400px] mx-auto space-y-6">
+                <div className="flex flex-wrap justify-between items-center mb-6 gap-3">
+                    <h2 className="text-xl sm:text-2xl font-bold text-slate-800">Edit Job</h2>
+                    <button
+                        onClick={handleCloseForm}
+                        className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors border border-slate-200 shadow-sm text-sm"
+                    >
+                        ← Back
+                    </button>
+                </div>
+                <JobCardForm role="engineer" jobId={selectedJob.id} onClose={handleCloseForm} />
+            </div>
         );
     }
 

@@ -16,6 +16,7 @@ interface Props {
   breakdownCallType?: BreakdownCallType;
   serviceCharge: number;
   onServiceChargeChange: (val: number) => void;
+  role?: 'engineer' | 'manager';
 }
 
 const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: string }) => {
@@ -32,7 +33,7 @@ const AnimatedValue = ({ value, prefix = "AED " }: { value: number; prefix?: str
   );
 };
 
-const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, serviceType, breakdownCallType, serviceCharge, onServiceChargeChange }: Props) => {
+const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, discountPercentage, onDiscountChange, salesArea, serviceType, breakdownCallType, serviceCharge, onServiceChargeChange, role = 'manager' }: Props) => {
   const pricingSummary = computePricingSummary({
     parts,
     labor,
@@ -53,6 +54,12 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
         </span>
         Cost Summary
       </h2>
+
+      {role === 'engineer' && (
+        <div className="rounded-3xl border border-amber-200/50 bg-amber-50/30 p-3 mb-4 text-xs text-amber-800">
+          📋 <strong>Read-only view</strong> — Pricing controls are restricted to managers. Contact your manager to adjust prices.
+        </div>
+      )}
 
       <div className="max-w-lg space-y-0.5">
         <div className="cost-row">
@@ -80,7 +87,7 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
         )}
 
         <AnimatePresence>
-          {showManualServiceChargeInput && (
+          {showManualServiceChargeInput && role === 'manager' && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
@@ -110,60 +117,73 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
           <AnimatedValue value={laborTotal} />
         </div>
 
-        <div className="cost-row border-t border-border/30 mt-1 pt-1">
-          <span className="text-sm text-black">OTHER EXPENSES</span>
-          <Input
-            className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
-            type="number"
-            min={0}
-            step={0.01}
-            value={otherExpenses}
-            onChange={(e) => onOtherExpensesChange(Number(e.target.value))}
-          />
-        </div>
+        {role === 'manager' && (
+          <>
+            <div className="cost-row border-t border-border/30 mt-1 pt-1">
+              <span className="text-sm text-black">OTHER EXPENSES</span>
+              <Input
+                className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
+                type="number"
+                min={0}
+                step={0.01}
+                value={otherExpenses}
+                onChange={(e) => onOtherExpensesChange(Number(e.target.value))}
+              />
+            </div>
 
-        <div className="cost-row border-t border-border/30">
-          <span className="text-sm text-black font-black">TOTAL COST</span>
-          <AnimatedValue value={totalCost} />
-        </div>
+            <div className="cost-row border-t border-border/30">
+              <div className="flex items-center gap-1.5">
+                <Percent className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-sm text-black">DISCOUNT %</span>
+              </div>
+              <Input
+                className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={discountPercentage}
+                onChange={(e) => onDiscountChange(Number(e.target.value))}
+              />
+            </div>
 
-        <div className="cost-row border-t border-border/30">
-          <div className="flex items-center gap-1.5">
-            <Percent className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm text-black">DISCOUNT %</span>
-          </div>
-          <Input
-            className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
-            type="number"
-            min={0}
-            max={100}
-            step={0.5}
-            value={discountPercentage}
-            onChange={(e) => onDiscountChange(Number(e.target.value))}
-          />
-        </div>
+            <div className="cost-row">
+              <span className="text-sm text-black">Discount Amount</span>
+              <motion.span
+                key={discount.toFixed(2)}
+                initial={{ scale: 1.2 }}
+                animate={{ scale: 1 }}
+                className="font-black text-sm text-black tabular-nums"
+              >
+                - AED {discount.toFixed(2)}
+              </motion.span>
+            </div>
 
-        <div className="cost-row">
-          <span className="text-sm text-black">Discount Amount</span>
-          <motion.span
-            key={discount.toFixed(2)}
-            initial={{ scale: 1.2 }}
-            animate={{ scale: 1 }}
-            className="font-black text-sm text-black tabular-nums"
-          >
-            - AED {discount.toFixed(2)}
-          </motion.span>
-        </div>
+            <div className="cost-row border-t border-border/30">
+              <span className="text-sm text-black">TOTAL AFTER DISCOUNT</span>
+              <AnimatedValue value={totalAfterDiscount} />
+            </div>
 
-        <div className="cost-row border-t border-border/30">
-          <span className="text-sm text-black">TOTAL AFTER DISCOUNT</span>
-          <AnimatedValue value={totalAfterDiscount} />
-        </div>
+            <div className="cost-row border-t border-border/30">
+              <span className="text-sm text-black">VAT (5%)</span>
+              <AnimatedValue value={vat} />
+            </div>
+          </>
+        )}
 
-        <div className="cost-row border-t border-border/30">
-          <span className="text-sm text-black">VAT (5%)</span>
-          <AnimatedValue value={vat} />
-        </div>
+        {role === 'engineer' && (
+          <>
+            <div className="cost-row border-t border-border/30">
+              <span className="text-sm text-black">TOTAL AFTER DISCOUNT</span>
+              <AnimatedValue value={totalAfterDiscount} />
+            </div>
+
+            <div className="cost-row border-t border-border/30">
+              <span className="text-sm text-black">VAT (5%)</span>
+              <AnimatedValue value={vat} />
+            </div>
+          </>
+        )}
 
         <motion.div
           className="flex justify-between items-center py-3 px-4 sm:py-5 sm:px-6 rounded-2xl mt-4"
