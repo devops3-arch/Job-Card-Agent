@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - feature/backend-hardening-v1
+      - main
 
 pool:
   vmImage: ubuntu-latest
