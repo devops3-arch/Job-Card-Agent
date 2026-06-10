@@ -1,70 +1,60 @@
-# Job Card Agent - Backend Pipeline
-# Express.js backend build and publish pipeline
-# https://aka.ms/yaml
-
 trigger:
-- main
+  branches:
+    include:
+      - main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: ubuntu-latest
 
 variables:
-  nodeVersion: '22.x'
+  node_version: '22.x'
 
 steps:
-
-# ===============================
-# BACKEND - EXPRESS
-# ===============================
-
-- task: NodeTool@1
+- task: NodeTool@0
   inputs:
-    versionSpec: '$(nodeVersion)'
-  displayName: 'Use Node.js 22'
+    versionSpec: '$(node_version)'
+  displayName: 'Install Node.js'
 
-- script: |
-    node -v
-    npm -v
-  displayName: 'Check Node Version'
+# ── Frontend build ──────────────────────────────────────────
+- script: npm install
+  displayName: 'Install frontend dependencies'
 
-- script: |
-    cd backend
-    npm install
-  displayName: 'Install Backend Dependencies'
+- script: npm run build
+  displayName: 'Build frontend (Vite)'
+  env:
+    VITE_API_BASE_URL: 'https://job-card-agent.azurewebsites.net'
 
-# Optional tests
-# - script: |
-#     cd backend
-#     npm test
-#   displayName: 'Run Backend Tests'
-#   continueOnError: true
-
+# ── Backend install ──────────────────────────────────────────
 - script: |
     cd backend
-    npm run build --if-present
-  displayName: 'Build Backend'
+    npm install --production
+  displayName: 'Install backend dependencies'
 
-- script: |
-    cd backend
-    npm prune --omit=dev
-  displayName: 'Prune Dev Dependencies'
+# ── Copy dist into backend for single-zip deploy ────────────
+- script: cp -r dist backend/dist
+  displayName: 'Copy frontend dist into backend folder'
 
-# ===============================
-# PUBLISH BUILD
-# ===============================
-
+# ── Package everything ───────────────────────────────────────
 - task: ArchiveFiles@2
   inputs:
-    rootFolderOrFile: 'backend'
+    rootFolderOrFile: './backend'
     includeRootFolder: false
-    archiveType: 'zip'
-    archiveFile: '$(Build.ArtifactStagingDirectory)/backend.zip'
+    archiveType: zip
+    archiveFile: '$(Build.ArtifactStagingDirectory)/app.zip'
     replaceExistingArchive: true
-  displayName: 'Archive Backend'
+  displayName: 'Create deployment zip'
 
-- task: PublishBuildArtifacts@1
+- publish: $(Build.ArtifactStagingDirectory)/app.zip
+  artifact: production-build
+  displayName: 'Publish artifact'
+
+# ── Deploy to Azure App Service ──────────────────────────────
+- task: AzureWebApp@1
   inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)/backend.zip'
-    ArtifactName: 'backend-build'
-    publishLocation: 'Container'
-  displayName: 'Publish Backend Artifact'
+    azureSubscription: 'job-card-agent-service-connection'   # <-- change this
+    appType: webAppLinux
+    appName: 'job-card-agent'
+    package: '$(Build.ArtifactStagingDirectory)/app.zip'
+    runtimeStack: 'NODE|22-lts'
+    startUpCommand: 'node server.js'
+  displayName: 'Deploy to Azure App Service'
