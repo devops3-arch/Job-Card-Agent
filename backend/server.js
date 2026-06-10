@@ -57,6 +57,19 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
+// ─── Global error handlers (prevent crash loop) ───────────────────────────────
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err.message);
+  console.error(err.stack);
+  // Do NOT exit — let Azure keep the process alive
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason instanceof Error ? reason.message : reason);
+  if (reason instanceof Error) console.error(reason.stack);
+  // Do NOT exit — let Azure keep the process alive
+});
+
 const app = express();
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
@@ -1326,7 +1339,6 @@ app.put(
             throw err;
           }
         }
-      } else {
       }
 
       if (Array.isArray(req.body.labor)) {
@@ -1361,7 +1373,6 @@ app.put(
             throw err;
           }
         }
-      } else {
       }
 
       try {
@@ -2265,7 +2276,7 @@ app.post(
         entityId: user.id,
         payload: {
           old_token_id: tokenRecord.id,
-          new_token_id: null, // Will be set by rotateRefreshToken
+          new_token_id: null,
           refresh_ip: req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || null,
           user_agent: req.headers["user-agent"] || null,
         },
@@ -2409,12 +2420,6 @@ app.post(
 
 // ─── Signature upload routes ──────────────────────────────────────────────────
 /**
- * POST /signatures/manager
- * Manager signs and uploads signature file (image)
- * Content-Type: multipart/form-data
- * Body: { signature: <file> }
- */
-/**
  * @swagger
  * /signatures/manager:
  *   post:
@@ -2479,19 +2484,15 @@ app.post(
       throw new AppError("No file provided", 400);
     }
 
-    // Generate secure filename (preserve existing logic)
     const filename = generateSecureFilename(req.user.id, "signature", req.file.originalname);
 
-    // Upload file using storage service
     const uploadResult = await storageService.uploadFile(req.file.buffer, filename, "signature");
     if (uploadResult.error) {
       throw new AppError(uploadResult.error, 400);
     }
 
-    // Get existing signature for audit
     const existing = await signatureService.getUserSignature(req.user.id);
 
-    // Update user signature metadata
     const updated = await signatureService.upsertUserSignature({
       userId: req.user.id,
       signature_url: uploadResult.url,
@@ -2516,7 +2517,6 @@ app.post(
       file_size: req.file.size,
     });
 
-    // Emit event and queue notifications (safe - doesn't break business logic)
     const event = await eventService.emitEvent({
       eventType: eventService.EVENT_TYPES.SIGNATURE_UPLOADED,
       entityType: "user",
@@ -2541,12 +2541,6 @@ app.post(
   })
 );
 
-/**
- * POST /signatures/engineer
- * Engineer signs and uploads signature file (image)
- * Content-Type: multipart/form-data
- * Body: { signature: <file> }
- */
 /**
  * @swagger
  * /signatures/engineer:
@@ -2612,19 +2606,15 @@ app.post(
       throw new AppError("No file provided", 400);
     }
 
-    // Generate secure filename (preserve existing logic)
     const filename = generateSecureFilename(req.user.id, "signature", req.file.originalname);
 
-    // Upload file using storage service
     const uploadResult = await storageService.uploadFile(req.file.buffer, filename, "signature");
     if (uploadResult.error) {
       throw new AppError(uploadResult.error, 400);
     }
 
-    // Get existing signature for audit
     const existing = await signatureService.getUserSignature(req.user.id);
 
-    // Update user signature metadata
     const updated = await signatureService.upsertUserSignature({
       userId: req.user.id,
       signature_url: uploadResult.url,
@@ -2649,7 +2639,6 @@ app.post(
       file_size: req.file.size,
     });
 
-    // Emit event and queue notifications (safe - doesn't break business logic)
     const event = await eventService.emitEvent({
       eventType: eventService.EVENT_TYPES.SIGNATURE_UPLOADED,
       entityType: "user",
@@ -2681,7 +2670,6 @@ app.get(
   asyncHandler(async (req, res) => {
     const jobId = Number(req.params.id);
 
-    // Enforce strict ownership / assignment checks before getting approved documents
     const jobResult = await pool.query(
       "SELECT id, engineer_id, manager_id FROM job_master WHERE id = $1",
       [jobId]
@@ -2703,13 +2691,6 @@ app.get(
   })
 );
 
-/**
- * POST /approved-documents
- * Upload an approved PDF document
- * Content-Type: multipart/form-data
- * Body: { document: <file>, job_id: <number> }
- * Requires: manager role
- */
 /**
  * @swagger
  * /approved-documents:
@@ -2784,7 +2765,6 @@ app.post(
       throw new AppError("Invalid job_id", 400);
     }
 
-    // Verify job exists and user has access
     const jobResult = await pool.query(
       "SELECT id, status, approved_by_id, approved_by, manager_id FROM job_master WHERE id = $1",
       [jobId]
@@ -2795,7 +2775,6 @@ app.post(
 
     const job = jobResult.rows[0];
 
-    // Enforce strict ownership / assignment checks before uploading approved documents
     if (req.user.role === "manager" && job.manager_id !== req.user.id) {
       throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
     }
@@ -2804,10 +2783,8 @@ app.post(
       throw new AppError("Job must be in APPROVED status to upload documents", 400);
     }
 
-    // Generate secure filename (preserve existing logic)
     const filename = generateSecureFilename(req.user.id, "document", req.file.originalname);
 
-    // Upload file using storage service
     const uploadResult = await storageService.uploadFile(req.file.buffer, filename, "document");
     if (uploadResult.error) {
       throw new AppError(uploadResult.error, 400);
@@ -2866,16 +2843,9 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
-// ─── Start server ─────────────────────────────────────────────────────────────
-// Validate access token secret before starting
+// ─── Validate required env vars before starting ───────────────────────────────
 if (!process.env.ACCESS_TOKEN_SECRET && !process.env.JWT_SECRET) {
     logger.error("FATAL: ACCESS_TOKEN_SECRET or JWT_SECRET environment variable is required", {
-      eventType: "startup",
-    });
-    logger.error("FATAL: ACCESS_TOKEN_SECRET or JWT_SECRET environment variable is required", {
-      eventType: "startup",
-    });
-    logger.error("Please add ACCESS_TOKEN_SECRET or JWT_SECRET to .env file", {
       eventType: "startup",
     });
     process.exit(1);
@@ -2883,7 +2853,6 @@ if (!process.env.ACCESS_TOKEN_SECRET && !process.env.JWT_SECRET) {
 
 app.use(errorHandler);
 
-// Log authentication secret status
 logger.info("Access token secret is configured", {
   eventType: "startup",
 });
@@ -2896,14 +2865,23 @@ app.listen(PORT, async () => {
       environment: process.env.NODE_ENV || "development",
     });
 
-    // Start background workers
+    // ─── Start background workers (skip if DATABASE_URL not yet configured) ───
+    if (!process.env.DATABASE_URL) {
+      logger.warn("DATABASE_URL is not set — skipping worker manager startup. Add it to Azure App Service Configuration when ready.", {
+        eventType: "startup",
+      });
+      return;
+    }
+
     try {
       await workerManager.start();
+      logger.info("Worker manager started successfully", { eventType: "startup" });
     } catch (error) {
-      logger.error("Failed to start worker manager", {
+      logger.error("Worker manager failed to start — server will continue without background workers", {
         eventType: "startup",
         error: error.message,
+        stack: error.stack,
       });
-      // Don't crash the server if workers fail to start
+      // Do NOT crash — HTTP server stays alive
     }
 });
