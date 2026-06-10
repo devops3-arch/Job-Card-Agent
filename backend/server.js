@@ -49,6 +49,11 @@ import {
   aiDescriptionSchema,
   idParamSchema,
 } from "./validators/schemas.js";
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -71,19 +76,7 @@ app.use(globalLimiter);
 
 // Serve uploaded files
 app.use("/uploads", express.static("uploads"));
-import { fileURLToPath } from "url";
-import path from "path";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Serve compiled frontend
-app.use(express.static(path.join(__dirname, "../dist")));
-
-// React Router catch-all — must be LAST before errorHandler
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "../dist/index.html"));
-});
 // ─── Swagger UI ──────────────────────────────────────────────────────────────
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 
@@ -2866,6 +2859,12 @@ app.post(
     return sendSuccess(res, document, 201);
   })
 );
+
+// ─── Serve frontend (must be after all API routes) ───────────────────────────
+app.use(express.static(path.join(__dirname, "dist")));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+});
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 // Validate access token secret before starting
