@@ -57,7 +57,10 @@ const app = express();
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.disable("x-powered-by");
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  credentials: true,
+}));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
@@ -68,7 +71,19 @@ app.use(globalLimiter);
 
 // Serve uploaded files
 app.use("/uploads", express.static("uploads"));
+import { fileURLToPath } from "url";
+import path from "path";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve compiled frontend
+app.use(express.static(path.join(__dirname, "../dist")));
+
+// React Router catch-all — must be LAST before errorHandler
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "../dist/index.html"));
+});
 // ─── Swagger UI ──────────────────────────────────────────────────────────────
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 
