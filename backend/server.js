@@ -74,7 +74,31 @@ const app = express();
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.disable("x-powered-by");
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        connectSrc: [
+          "'self'",
+          "https://job-card-agent.azurewebsites.net",
+          "http://localhost:8080",
+          "http://localhost:5173",
+        ],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        fontSrc: ["'self'", "data:"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+    crossOriginResourcePolicy: {
+      policy: "cross-origin",
+    },
+  })
+);
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:8080",
   credentials: true,

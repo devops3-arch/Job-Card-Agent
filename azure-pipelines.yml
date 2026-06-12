@@ -33,7 +33,7 @@ steps:
     npm run build
   displayName: 'Build Frontend (Vite)'
   env:
-    VITE_API_BASE_URL: 'https://job-card-agent.azurewebsites.net'
+    VITE_API_BASE_URL: ''
 
 # ── Backend install ──────────────────────────────────────────────────────────
 - script: |
