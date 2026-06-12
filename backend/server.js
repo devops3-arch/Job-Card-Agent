@@ -71,6 +71,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const app = express();
+app.set("trust proxy", 1);
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.disable("x-powered-by");
