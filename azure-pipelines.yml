@@ -1,47 +1,98 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+
+# ── Node setup — bypass NodeTool entirely, use nvm directly ─────────────────
+- script: |
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm install 22
+    nvm use 22
+    nvm alias default 22
+    echo "##vso[task.prependpath]$NVM_DIR/versions/node/$(nvm version 22)/bin"
+  displayName: 'Install Node.js 22 via nvm'
+
+- script: |
+    echo "Node version: $(node -v)"
+    echo "npm version: $(npm -v)"
+    which node
+  displayName: 'Verify Node Version'
+
+# ── Frontend build ───────────────────────────────────────────────────────────
+- script: |
+    npm install
+  displayName: 'Install Frontend Dependencies'
+
+- script: |
+    npm run build
+  displayName: 'Build Frontend (Vite)'
+  env:
+    VITE_API_BASE_URL: 'https://job-card-agent.azurewebsites.net'
+
 # ── Backend install ──────────────────────────────────────────────────────────
 - script: |
     cd backend
     npm install --omit=dev
   displayName: 'Install Backend Production Dependencies'
 
-# Verify node_modules actually exists before zipping
+# ── Clean stale Oryx manifest and verify structure ───────────────────────────
 - script: |
-    echo "=== Checking node_modules exists ==="
-    ls backend/node_modules | wc -l
-    echo "=== Checking express exists ==="
-    ls backend/node_modules/express
-    echo "=== Checking pg exists ==="
-    ls backend/node_modules/pg
-  displayName: 'Verify node_modules before zip'
+    rm -f backend/oryx-manifest.toml
+    echo "=== Verifying server.js exists ==="
+    ls -la backend/server.js
+    echo "=== Verifying package.json exists ==="
+    ls -la backend/package.json
+    echo "=== Verifying node_modules exists ==="
+    du -sh backend/node_modules
+  displayName: 'Clean Oryx Manifest and Verify Structure'
 
 # ── Copy frontend dist into backend ─────────────────────────────────────────
 - script: |
     cp -r dist backend/dist
+    echo "=== dist copied ==="
     ls backend/dist
   displayName: 'Copy Frontend dist into Backend'
-
-# ── Verify full backend folder before zipping ────────────────────────────────
-- script: |
-    echo "=== Full backend listing ==="
-    ls -la backend/
-    echo "=== node_modules size ==="
-    du -sh backend/node_modules
-  displayName: 'Verify Backend Before Zip'
 
 # ── Package backend as zip ───────────────────────────────────────────────────
 - task: ArchiveFiles@2
   inputs:
-    rootFolderOrFile: 'backend'
+    rootFolderOrFile: '$(System.DefaultWorkingDirectory)/backend'
     includeRootFolder: false
     archiveType: zip
     archiveFile: '$(Build.ArtifactStagingDirectory)/app.zip'
     replaceExistingArchive: true
   displayName: 'Create Deployment Zip'
 
-# Verify zip contains node_modules
+# ── Verify zip structure ─────────────────────────────────────────────────────
 - script: |
     echo "=== Zip size ==="
     du -sh $(Build.ArtifactStagingDirectory)/app.zip
-    echo "=== Checking zip contains node_modules ==="
-    unzip -l $(Build.ArtifactStagingDirectory)/app.zip | grep "node_modules/express" | head -5
-  displayName: 'Verify Zip Contents'
+    echo "=== Top-level files in zip ==="
+    unzip -l $(Build.ArtifactStagingDirectory)/app.zip | head -30
+    echo "=== Checking server.js is at root of zip ==="
+    unzip -l $(Build.ArtifactStagingDirectory)/app.zip | grep "server.js"
+    echo "=== Checking node_modules/express is in zip ==="
+    unzip -l $(Build.ArtifactStagingDirectory)/app.zip | grep "node_modules/express" | head -3
+  displayName: 'Verify Zip Structure'
+
+# ── Publish artifact ─────────────────────────────────────────────────────────
+- publish: $(Build.ArtifactStagingDirectory)/app.zip
+  artifact: production-build
+  displayName: 'Publish Artifact'
+
+# ── Deploy to Azure App Service ──────────────────────────────────────────────
+- task: AzureWebApp@1
+  inputs:
+    azureSubscription: 'job-card-agent-service-connection'
+    appType: webAppLinux
+    appName: 'job-card-agent'
+    package: '$(Build.ArtifactStagingDirectory)/app.zip'
+    deploymentMethod: zipDeploy
+    startUpCommand: 'node server.js'
+  displayName: 'Deploy to Azure App Service'
