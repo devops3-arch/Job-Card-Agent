@@ -2851,8 +2851,9 @@ app.use("/api", (_req, res) => {
   });
 });
 
-// FIX 4: Frontend catch-all — only for non-API routes (SPA client-side routing)
-app.get("*", (_req, res) => {
+// FIX 4: Frontend catch-all — Express 5 compatible wildcard route
+// This replaces app.get("*", ...), which crashes with path-to-regexp in Express 5.
+app.get("/{*splat}", (_req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
@@ -2863,10 +2864,10 @@ app.use(errorHandler);
 
 // ─── Validate required env vars before starting ───────────────────────────────
 if (!process.env.ACCESS_TOKEN_SECRET && !process.env.JWT_SECRET) {
-    logger.error("FATAL: ACCESS_TOKEN_SECRET or JWT_SECRET environment variable is required", {
-      eventType: "startup",
-    });
-    process.exit(1);
+  logger.error("FATAL: ACCESS_TOKEN_SECRET or JWT_SECRET environment variable is required", {
+    eventType: "startup",
+  });
+  process.exit(1);
 }
 
 logger.info("Access token secret is configured", {
@@ -2874,30 +2875,31 @@ logger.info("Access token secret is configured", {
 });
 
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, async () => {
-    logger.info(`Server running on port ${PORT}`, {
+  logger.info(`Server running on port ${PORT}`, {
+    eventType: "startup",
+    port: PORT,
+    environment: process.env.NODE_ENV || "development",
+  });
+
+  // ─── Start background workers (skip if DATABASE_URL not yet configured) ───
+  if (!process.env.DATABASE_URL) {
+    logger.warn("DATABASE_URL is not set — skipping worker manager startup. Add it to Azure App Service Configuration when ready.", {
       eventType: "startup",
-      port: PORT,
-      environment: process.env.NODE_ENV || "development",
     });
+    return;
+  }
 
-    // ─── Start background workers (skip if DATABASE_URL not yet configured) ───
-    if (!process.env.DATABASE_URL) {
-      logger.warn("DATABASE_URL is not set — skipping worker manager startup. Add it to Azure App Service Configuration when ready.", {
-        eventType: "startup",
-      });
-      return;
-    }
-
-    try {
-      await workerManager.start();
-      logger.info("Worker manager started successfully", { eventType: "startup" });
-    } catch (error) {
-      logger.error("Worker manager failed to start — server will continue without background workers", {
-        eventType: "startup",
-        error: error.message,
-        stack: error.stack,
-      });
-      // Do NOT crash — HTTP server stays alive
-    }
+  try {
+    await workerManager.start();
+    logger.info("Worker manager started successfully", { eventType: "startup" });
+  } catch (error) {
+    logger.error("Worker manager failed to start — server will continue without background workers", {
+      eventType: "startup",
+      error: error.message,
+      stack: error.stack,
+    });
+    // Do NOT crash — HTTP server stays alive
+  }
 });
