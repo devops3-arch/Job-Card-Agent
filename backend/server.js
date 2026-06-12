@@ -87,8 +87,8 @@ app.use(requestCorrelation);
 app.use(requestLogger);
 app.use(globalLimiter);
 
-// Serve uploaded files
-app.use("/uploads", express.static("uploads"));
+// FIX 1: Use __dirname-relative path for uploads so Azure resolves it correctly
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ─── Swagger UI ──────────────────────────────────────────────────────────────
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
@@ -2837,11 +2837,29 @@ app.post(
   })
 );
 
-// ─── Serve frontend (must be after all API routes) ───────────────────────────
+// ─── Serve frontend (must be after all API routes) ────────────────────────────
+
+// FIX 2: Use __dirname-relative path so Azure resolves dist correctly
 app.use(express.static(path.join(__dirname, "dist")));
-app.get("*", (req, res) => {
+
+// FIX 3: API 404 handler — catches unmatched /api/* routes BEFORE the frontend
+// catch-all so they return JSON instead of index.html
+app.use("/api", (_req, res) => {
+  res.status(404).json({
+    success: false,
+    error: { code: "NOT_FOUND", message: "API route not found" },
+  });
+});
+
+// FIX 4: Frontend catch-all — only for non-API routes (SPA client-side routing)
+app.get("*", (_req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
+
+// ─── Global error handler (must be last) ─────────────────────────────────────
+// FIX 5: Moved errorHandler AFTER the catch-all routes so it can handle
+// errors thrown from any route including the SPA fallback
+app.use(errorHandler);
 
 // ─── Validate required env vars before starting ───────────────────────────────
 if (!process.env.ACCESS_TOKEN_SECRET && !process.env.JWT_SECRET) {
@@ -2850,8 +2868,6 @@ if (!process.env.ACCESS_TOKEN_SECRET && !process.env.JWT_SECRET) {
     });
     process.exit(1);
 }
-
-app.use(errorHandler);
 
 logger.info("Access token secret is configured", {
   eventType: "startup",

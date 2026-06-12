@@ -10,51 +10,74 @@ variables:
   node_version: '22.x'
 
 steps:
-- task: NodeTool@0
+- task: NodeTool@1
   inputs:
     versionSpec: '$(node_version)'
-  displayName: 'Install Node.js'
+  displayName: 'Use Node.js 22'
 
-# ── Frontend build ──────────────────────────────────────────
-- script: npm install
-  displayName: 'Install frontend dependencies'
+- script: |
+    node -v
+    npm -v
+  displayName: 'Check Node Version'
 
-- script: npm run build
-  displayName: 'Build frontend (Vite)'
+# ── Frontend build ──────────────────────────────────────────────────────────
+- script: |
+    npm install
+  displayName: 'Install Frontend Dependencies'
+
+- script: |
+    npm run build
+  displayName: 'Build Frontend (Vite)'
   env:
     VITE_API_BASE_URL: 'https://job-card-agent.azurewebsites.net'
 
-# ── Backend install ──────────────────────────────────────────
+# ── Backend install ─────────────────────────────────────────────────────────
 - script: |
     cd backend
-    npm install --production
-  displayName: 'Install backend dependencies'
+    npm install --omit=dev
+  displayName: 'Install Backend Production Dependencies'
 
-# ── Copy dist into backend for single-zip deploy ────────────
-- script: cp -r dist backend/dist
-  displayName: 'Copy frontend dist into backend folder'
+# ── Verify backend has everything needed ────────────────────────────────────
+- script: |
+    echo "=== backend root ==="
+    ls backend/
+    echo "=== node_modules present ==="
+    ls backend/node_modules | wc -l
+    echo "=== checking critical modules ==="
+    ls backend/node_modules/express
+    ls backend/node_modules/pg
+    ls backend/node_modules/jsonwebtoken
+  displayName: 'Verify Backend node_modules'
 
-# ── Package everything ───────────────────────────────────────
+# ── Copy frontend dist into backend ────────────────────────────────────────
+- script: |
+    cp -r dist backend/dist
+    echo "=== dist copied ==="
+    ls backend/dist
+  displayName: 'Copy Frontend dist into Backend'
+
+# ── Package backend as zip ──────────────────────────────────────────────────
 - task: ArchiveFiles@2
   inputs:
-    rootFolderOrFile: './backend'
+    rootFolderOrFile: 'backend'
     includeRootFolder: false
     archiveType: zip
     archiveFile: '$(Build.ArtifactStagingDirectory)/app.zip'
     replaceExistingArchive: true
-  displayName: 'Create deployment zip'
+  displayName: 'Create Deployment Zip'
 
+# ── Publish artifact ────────────────────────────────────────────────────────
 - publish: $(Build.ArtifactStagingDirectory)/app.zip
   artifact: production-build
-  displayName: 'Publish artifact'
+  displayName: 'Publish Artifact'
 
-# ── Deploy to Azure App Service ──────────────────────────────
+# ── Deploy to Azure App Service ─────────────────────────────────────────────
 - task: AzureWebApp@1
   inputs:
-    azureSubscription: 'job-card-agent-service-connection'   # <-- change this
+    azureSubscription: 'job-card-agent-service-connection'
     appType: webAppLinux
     appName: 'job-card-agent'
     package: '$(Build.ArtifactStagingDirectory)/app.zip'
-    runtimeStack: 'NODE|22-lts'
+    deploymentMethod: zipDeploy
     startUpCommand: 'node server.js'
   displayName: 'Deploy to Azure App Service'
