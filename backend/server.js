@@ -199,7 +199,7 @@ const SYSTEM_USER = "system_user";
  *               type: string
  *               example: Backend is running
  */
-app.get("/", (_req, res) => res.send("Backend is running"));
+app.get("/health-basic", (_req, res) => res.send("Backend is running"));
 
 /**
  * @swagger
