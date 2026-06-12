@@ -16,7 +16,7 @@ This upload architecture provides:
 ## Folder Structure
 
 ```
-backend/
+backend/  
 ├── uploads/
 │   ├── signatures/        # User signature images
 │   ├── approved-documents/ # Approved PDF documents
