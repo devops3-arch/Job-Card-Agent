@@ -1,5 +1,6 @@
 import logger from "../services/logger/logger.js";
 import { markNotificationSent, markNotificationFailed } from "../services/workers/queueProcessor.js";
+import { deliverNotificationEmail, isEmailable } from "../services/email/notificationMailer.js";
 
 /**
  * Notification Worker
@@ -56,6 +57,31 @@ const simulateNotificationProcessing = async (notification) => {
   });
 
   try {
+    // Real delivery first. Job lifecycle notifications go out as email when SMTP is
+    // configured; a send failure returns false so the queue retries it. Everything
+    // else — and every notification on an unconfigured deployment — falls through to
+    // the logged simulation below, which is the behaviour this worker always had.
+    if (isEmailable(notification_type)) {
+      const delivery = await deliverNotificationEmail(notification);
+
+      if (delivery.error) {
+        errorLog("Notification email failed", new Error(delivery.error), {
+          notificationId,
+          notificationType: notification_type,
+        });
+        return false;
+      }
+
+      if (delivery.sent) {
+        log("Notification emailed", {
+          notificationId,
+          notificationType: notification_type,
+          recipients: delivery.recipients,
+        });
+        return true;
+      }
+    }
+
     // Simulate different processing times and potential failures
     // In production, replace with actual service integrations
 

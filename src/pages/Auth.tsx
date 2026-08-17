@@ -140,7 +140,7 @@ const Auth = () => {
   return (
     <div className="min-h-screen flex bg-background font-body">
       {/* ── Left brand panel ── */}
-      <div className="hidden lg:flex lg:w-[45%] xl:w-[42%] relative flex-col justify-between p-12 overflow-hidden bg-[hsl(234_85%_55%)]">
+      <div className="hidden lg:flex lg:w-[45%] xl:w-[42%] relative flex-col justify-between p-12 overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-900 to-sky-600">
         {/* Decorative blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-32 -left-32 w-[500px] h-[500px] rounded-full bg-white/5 blur-3xl" />
@@ -156,10 +156,10 @@ const Auth = () => {
           className="relative z-10 flex items-center gap-3"
         >
           <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center shadow-lg">
-            <span className="text-base font-bold text-white font-display">JF</span>
+            <span className="text-base font-bold text-white font-display">JC</span>
           </div>
           <span className="text-xl font-bold text-white font-display tracking-tight">
-            JobFlow Pro
+            Job Card
           </span>
         </motion.div>
 
@@ -172,9 +172,9 @@ const Auth = () => {
         >
           <div>
             <h2 className="text-4xl xl:text-5xl font-display font-bold text-white leading-tight">
-              Streamline your
+              Streamline field
               <br />
-              <span className="text-white/80">service workflow</span>
+              <span className="text-white/80">service operations</span>
             </h2>
             <p className="mt-4 text-white/70 text-base leading-relaxed max-w-sm">
               Everything your team needs to track jobs, manage parts, and
@@ -213,16 +213,16 @@ const Auth = () => {
 
       {/* ── Right form panel ── */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10">
-        <div className="w-full max-w-[420px]">
+        <div className="w-full max-w-[420px] bg-white/95 border border-slate-200/80 shadow-2xl shadow-slate-900/10 rounded-[2rem] p-6 sm:p-8">
           {/* Mobile logo */}
           <div className="lg:hidden flex items-center justify-center gap-2 mb-8">
             <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
               <span className="text-sm font-bold text-primary-foreground font-display">
-                JF
+                JC
               </span>
             </div>
             <span className="text-lg font-bold text-foreground font-display">
-              JobFlow Pro
+              Job Card
             </span>
           </div>
 

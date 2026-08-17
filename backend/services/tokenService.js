@@ -68,7 +68,8 @@ export const storeRefreshToken = async ({ userId, token, createdByIp = null, use
 
 export const findRefreshTokenByHash = async (tokenHash, client = null) => {
   const query = `
-    SELECT rt.*, u.name AS user_name, u.email AS user_email, u.role AS user_role, u.signature_url AS user_signature_url
+    SELECT rt.*, u.name AS user_name, u.email AS user_email, u.role AS user_role, u.signature_url AS user_signature_url,
+           u.is_active AS user_is_active
     FROM refresh_tokens rt
     JOIN users u ON rt.user_id = u.id
     WHERE rt.token_hash = $1`;

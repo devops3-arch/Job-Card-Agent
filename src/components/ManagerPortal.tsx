@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { CheckCircle2, Clock, FileText, Activity } from "lucide-react";
+import { isApproved, isOpen } from "@/lib/jobStatus";
+import { CheckCircle2, Clock, FileText, Activity, AlertTriangle } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -31,52 +32,96 @@ const getStatusBadge = (status: string) => {
     return <Badge variant="outline" className="rounded-full shadow-sm">{status}</Badge>;
 };
 
+// The /jobs call normally returns in well under a second; this ceiling only
+// exists so a hung request eventually surfaces an error instead of spinning.
+const JOBS_REQUEST_TIMEOUT_MS = 15000;
+
+const jobDateValue = (job: any) => new Date(job.job_date || job.date || 0).getTime();
+const byJobDateDesc = (a: any, b: any) => jobDateValue(b) - jobDateValue(a);
+
+const readCachedJobs = () => {
+    try {
+        const cached = JSON.parse(localStorage.getItem("mockJobs") || "[]");
+        return Array.isArray(cached) ? [...cached].sort(byJobDateDesc) : [];
+    } catch {
+        return [];
+    }
+};
+
 const ManagerPortal = () => {
     const [jobs, setJobs] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState<any>(null);
     const user = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
     const userId = user?.id;
     const userName = user?.name || user?.fullName || "";
 
-    const isPending = (s: string) => {
-        const status = (s ?? "").toUpperCase();
-        return !status || status === "DRAFT" || status === "WAITING_PRICING" || status === "PENDING_APPROVAL" || status.includes("SUBMIT") || status.includes("REVIEW") || status.includes("PEND");
-    };
+    const isPending = (s: string) => isOpen(s);
 
     const isAssignedJob = (job: any) => {
         return String(job.manager_id) === String(userId) || String(job.manager_name) === String(userName) || String(job.managerName) === String(userName);
     };
 
-    useEffect(() => {
-        const fetchJobs = () => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-            apiFetch("/jobs?ts=" + new Date().getTime(), { signal: controller.signal })
-                .then(res => {
-                    clearTimeout(timeoutId);
-                    if (!res.ok) throw new Error("Backend connection failed");
-                    return res.json();
-                })
-                .then(data => {
-                    let fetchedJobs = Array.isArray(data.data) ? data.data : [];
-                    setJobs(fetchedJobs.sort((a: any, b: any) => new Date(b.job_date).getTime() - new Date(a.job_date).getTime()));
-                })
-                .catch(() => {
-                    const localJobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-                    setJobs(Array.isArray(localJobs) ? localJobs.sort((a: any, b: any) => new Date(b.job_date || b.date).getTime() - new Date(a.job_date || a.date).getTime()) : []);
-                });
-        };
+    const fetchJobs = useCallback(async (unmountSignal?: AbortSignal) => {
+        const controller = new AbortController();
+        const abortForUnmount = () => controller.abort();
+        unmountSignal?.addEventListener("abort", abortForUnmount);
 
-        fetchJobs();
-        const listener = () => fetchJobs();
-        window.addEventListener('jobsUpdated', listener);
-        return () => window.removeEventListener('jobsUpdated', listener);
+        let timedOut = false;
+        const timeoutId = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, JOBS_REQUEST_TIMEOUT_MS);
+
+        setIsLoading(true);
+        try {
+            const res = await apiFetch("/jobs?ts=" + Date.now(), { signal: controller.signal });
+            if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+            const data = await res.json();
+            const fetchedJobs = Array.isArray(data.data) ? data.data : [];
+            setJobs([...fetchedJobs].sort(byJobDateDesc));
+            setLoadError(null);
+        } catch {
+            // Navigated away mid-request — the component is gone, leave state alone.
+            if (unmountSignal?.aborted) return;
+            // Show whatever was cached locally, but never let a failed request
+            // render as "no jobs assigned" — that reads as a definitive answer.
+            setJobs(readCachedJobs());
+            setLoadError(
+                timedOut
+                    ? `The server did not respond within ${JOBS_REQUEST_TIMEOUT_MS / 1000}s.`
+                    : "Could not reach the server."
+            );
+        } finally {
+            clearTimeout(timeoutId);
+            unmountSignal?.removeEventListener("abort", abortForUnmount);
+            if (!unmountSignal?.aborted) setIsLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        const unmount = new AbortController();
+        fetchJobs(unmount.signal);
+        const listener = () => fetchJobs(unmount.signal);
+        window.addEventListener('jobsUpdated', listener);
+        return () => {
+            window.removeEventListener('jobsUpdated', listener);
+            unmount.abort();
+        };
+    }, [fetchJobs]);
 
     const visibleJobs = jobs.filter(isAssignedJob);
     const pendingJobs = visibleJobs.filter(j => isPending(j.status)).length;
-    const approvedJobs = visibleJobs.filter(j => (j.status ?? "").toUpperCase().includes('APPROV')).length;
+    const approvedJobs = visibleJobs.filter(j => isApproved(j.status)).length;
+
+    // "No jobs" is only an honest answer once a request has actually succeeded.
+    const emptyStateMessage = isLoading
+        ? "Loading assigned job cards…"
+        : loadError
+            ? "Job cards could not be loaded."
+            : "No assigned job cards found.";
 
     const statCards = [
         { title: "To Approve", value: pendingJobs.toString(), icon: <Activity className="text-amber-500" size={22} />, gradient: "from-amber-500/20 to-orange-500/5", border: "border-amber-200/50" },
@@ -204,6 +249,24 @@ const ManagerPortal = () => {
             </div>
             </div>
 
+            {loadError && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-red-50/80 border border-red-200/60 rounded-2xl px-4 py-3">
+                    <div className="flex items-start gap-2">
+                        <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={18} />
+                        <p className="text-sm font-medium text-red-700">
+                            {loadError} The figures below may be out of date.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => fetchJobs()}
+                        disabled={isLoading}
+                        className="shrink-0 px-4 py-1.5 rounded-full bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-60"
+                    >
+                        {isLoading ? "Retrying…" : "Retry"}
+                    </button>
+                </div>
+            )}
+
             {/* Mobile card layout */}
             {isMobile ? (
                 <div className="space-y-3">
@@ -256,7 +319,7 @@ const ManagerPortal = () => {
                         ))}
                     </AnimatePresence>
                     {visibleJobs.length === 0 && (
-                        <p className="text-center text-slate-500 font-medium py-8">No assigned job cards found.</p>
+                        <p className="text-center text-slate-500 font-medium py-8">{emptyStateMessage}</p>
                     )}
                 </div>
             ) : (
@@ -326,7 +389,7 @@ const ManagerPortal = () => {
                                 {visibleJobs.length === 0 && (
                                     <tr>
                                         <td colSpan={5} className="p-8 text-center text-slate-500 font-medium">
-                                            No assigned job cards found.
+                                            {emptyStateMessage}
                                         </td>
                                     </tr>
                                 )}

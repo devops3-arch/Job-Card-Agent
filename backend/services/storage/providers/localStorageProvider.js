@@ -105,6 +105,9 @@ export class LocalStorageProvider {
     if (fileType === 'document') {
       return `uploads/approved-documents/${filename}`;
     }
+    if (fileType === 'report') {
+      return `uploads/job-evidence/${filename}`;
+    }
     return `uploads/temp/${filename}`;
   }
 }

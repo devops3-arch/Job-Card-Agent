@@ -100,6 +100,7 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
                   <Input
                     className="w-full h-11 text-right text-sm font-bold text-black bg-white/80 rounded-xl border-slate-300 tabular-nums"
                     type="number"
+                    inputMode="decimal"
                     min={0}
                     step={0.01}
                     value={serviceCharge}
@@ -124,6 +125,7 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
               <Input
                 className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
                 type="number"
+                inputMode="decimal"
                 min={0}
                 step={0.01}
                 value={otherExpenses}
@@ -139,6 +141,7 @@ const CostingSection = ({ parts, labor, otherExpenses, onOtherExpensesChange, di
               <Input
                 className="w-24 sm:w-32 h-9 text-right text-sm font-bold text-black bg-white/80 rounded-lg border-slate-300 tabular-nums"
                 type="number"
+                inputMode="decimal"
                 min={0}
                 max={100}
                 step={0.5}

@@ -7,6 +7,15 @@ export const API_BASE =
     ? ""
     : import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
+// Uploads are stored as the provider gave them: a path like /uploads/... for local
+// storage, an absolute blob URL for Azure. Absolute ones pass through untouched;
+// paths are resolved against the API, which is the same origin in production.
+export function resolveFileUrl(fileUrl: string): string {
+    if (!fileUrl) return "";
+    if (/^(https?:|data:|blob:)/i.test(fileUrl)) return fileUrl;
+    return `${API_BASE}${fileUrl.startsWith("/") ? "" : "/"}${fileUrl}`;
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
     const token = localStorage.getItem("authToken");
     const headers = new Headers(init.headers || {});

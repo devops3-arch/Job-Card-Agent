@@ -19,6 +19,8 @@ export class AzureBlobStorageProvider {
     this.containers = {
       signatures: process.env.AZURE_STORAGE_CONTAINER_SIGNATURES || 'signatures',
       documents: process.env.AZURE_STORAGE_CONTAINER_DOCUMENTS || 'approved-documents',
+      // Mandatory job-card evidence: photos, nameplate shots and sound files.
+      reports: process.env.AZURE_STORAGE_CONTAINER_REPORTS || 'job-evidence',
     };
 
     // Ensure containers exist
@@ -150,6 +152,8 @@ export class AzureBlobStorageProvider {
         return this.containers.signatures;
       case 'document':
         return this.containers.documents;
+      case 'report':
+        return this.containers.reports;
       default:
         return 'temp';
     }

@@ -14,7 +14,8 @@ const getStoredUser = () => {
 const ProfileSettings = () => {
     const storedUser = getStoredUser();
     const [formData, setFormData] = useState({
-        name: storedUser?.fullName || storedUser?.full_name || '',
+        // Login stores the display name as "name"; the other two are older shapes.
+        name: storedUser?.name || storedUser?.fullName || storedUser?.full_name || '',
         email: storedUser?.email || '',
         phone: storedUser?.phone || '',
         department: storedUser?.department || '',
@@ -44,10 +45,12 @@ const ProfileSettings = () => {
                 }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message);
-            // Update localStorage with fresh data
+            if (!res.ok) throw new Error(data?.error?.message || data?.message || "Failed to update profile");
+            // Keep "name" in step with the key login writes, so the rest of the app
+            // (sidebar, job cards, PDF footer) picks the new name up immediately.
             localStorage.setItem("user", JSON.stringify({
                 ...storedUser,
+                name: data.data.name ?? data.data.fullName,
                 fullName: data.data.fullName,
                 phone: data.data.phone,
                 department: data.data.department,

@@ -1,0 +1,22 @@
+# Normalize line endings so the repository always stores LF, regardless of the
+# platform a contributor works on. Without this, editing on Windows rewrote whole
+# files as CRLF and every diff looked like a full-file replacement.
+* text=auto eol=lf
+
+# Binary files git should never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.mp3 binary
+*.wav binary
+*.m4a binary
+*.xlsx binary
+*.zip binary

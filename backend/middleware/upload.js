@@ -9,11 +9,13 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import logger from '../services/logger/logger.js';
+import storageService from '../services/storage/storageService.js';
 import {
   generateSecureFilename,
   sanitizeFilename,
   validateSignatureFile,
   validateDocumentFile,
+  validateUploadedFileContent,
   getUploadPath,
 } from '../utils/uploadHelpers.js';
 
@@ -90,6 +92,17 @@ export const documentUpload = multer({
   },
 }).single('document');
 
+/** Field-service evidence uploads. The route applies the 10MB photo limit
+ * and the 20MB audio limit after multer has parsed the multipart request. */
+export const reportUpload = multer({
+  storage: memoryStorage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) return cb(null, true);
+    return cb(new Error('Only image and audio files are allowed for report evidence'));
+  },
+}).array('files', 20);
+
 /**
  * Save uploaded file to disk
  * Generates secure filename and stores in appropriate directory
@@ -99,45 +112,52 @@ export const documentUpload = multer({
  * @param {string} fileType - 'signature' or 'document'
  * @returns {object} { filename, filepath, url, error? }
  */
-export function saveUploadedFile(file, userId, fileType) {
+export async function saveUploadedFile(file, userId, fileType, uploadKind = null) {
   if (!file) {
     return { error: 'No file provided' };
   }
 
   try {
+    const contentValidation = await validateUploadedFileContent(file.buffer, uploadKind || fileType, file.mimetype, file.originalname);
+    if (!contentValidation.valid) {
+      return { error: contentValidation.error };
+    }
     // Generate secure filename
     const filename = generateSecureFilename(userId, fileType, file.originalname);
 
-    // Get upload path
-    const uploadPath = getUploadPath(fileType, filename);
-    const fullPath = path.join(
-      path.dirname(__filename),
-      '..',
-      uploadPath
-    );
+    // Go through storageService rather than writing to disk directly, so that
+    // STORAGE_PROVIDER=azure actually sends these files to Blob storage. Writing
+    // locally leaves job evidence inside the deployed app directory, where it is
+    // lost on redeploy and invisible to other instances.
+    const uploadResult = await storageService.uploadFile(file.buffer, filename, fileType, {
+      metadata: { userId: String(userId), uploadKind: String(uploadKind || fileType) },
+    });
 
-    // Write file to disk
-    fs.writeFileSync(fullPath, file.buffer);
+    if (uploadResult?.error) {
+      return { error: uploadResult.error };
+    }
 
-    logger.info("File saved to local storage", {
+    logger.info("File saved to storage", {
       eventType: "upload",
       operation: "save",
       filename,
-      filepath: uploadPath,
+      filepath: uploadResult.filepath,
       size: file.size,
     });
 
     return {
       filename,
-      filepath: uploadPath,
-      url: `/${uploadPath}`, // Relative URL for storage
+      filepath: uploadResult.filepath,
+      url: uploadResult.url,
       size: file.size,
     };
   } catch (error) {
     logger.error("File save failed", {
       eventType: "upload",
       operation: "save",
-      filename,
+      // Not the generated filename: that is scoped to the try block, and
+      // referencing it here threw a ReferenceError that masked the real error.
+      originalName: file?.originalname,
       error: error.message,
     });
     return { error: `Failed to save file: ${error.message}` };
@@ -201,6 +221,7 @@ export function uploadFileExists(filepath) {
 export default {
   signatureUpload,
   documentUpload,
+  reportUpload,
   saveUploadedFile,
   deleteUploadedFile,
   uploadFileExists,

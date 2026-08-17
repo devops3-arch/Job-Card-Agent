@@ -23,6 +23,28 @@ export interface CustomerInfo {
   equipmentPartNo: string;
   equipmentSerialNo: string;
   equipmentYear: string;
+  customerLocation: string;
+  siteContact: string;
+  timeIn: string;
+  timeOut: string;
+  reportDate: string;
+  customerPoRef: string;
+  complaintIssueDescription: string;
+  customerEquipmentId: string;
+  equipmentType: string;
+  meterReading: string;
+  capacityRating: string;
+  controllerPanelModel: string;
+  alarmFaultCode: string;
+  lastServiceDate: string;
+  lastServiceHours: string;
+  oilRefrigerantFuelType: string;
+  dutyCycle: string;
+  warrantyStatus: string;
+  warrantyClaimRef: string;
+  previousJobRef: string;
+  nameplatePhotoRef: string;
+  vibrationReportRef: string;
 }
 
 export type ServiceType = 'service_contract' | 'warranty' | 'customer_request' | 'breakdown_call';

@@ -1,5 +1,29 @@
 -- PostgreSQL schema for Job Card Management System
 -- Safe to re-run: uses IF NOT EXISTS and ADD COLUMN IF NOT EXISTS throughout.
+--
+-- Order matters: users must exist before job_master, which references it for
+-- engineer_id, manager_id and deleted_by. Creating job_master first fails on a
+-- clean database.
+
+-- ─── Users table for authentication ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('engineer', 'manager', 'admin')),
+  signature_url TEXT,
+  signature_uploaded_at TIMESTAMP,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP,
+  phone TEXT,
+  department TEXT
+);
+
+-- Indexes for users table
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
 
 -- ─── Core job table ──────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS job_master (
@@ -155,24 +179,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_uploaded_at TIMESTAMP;
 --
 -- This is optional since the API now manages deletion explicitly.
 -- Only run if you want DB-level cascade enforcement.
-
--- ─── Users table for authentication ───────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('engineer', 'manager', 'admin')),
-  signature_url TEXT,
-  signature_uploaded_at TIMESTAMP,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP
-);
-
--- Indexes for users table
-CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
-CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
 
 CREATE TABLE IF NOT EXISTS approved_documents (
   id SERIAL PRIMARY KEY,

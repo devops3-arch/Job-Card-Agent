@@ -10,8 +10,8 @@ import asyncHandler from "./middleware/asyncHandler.js";
 import errorHandler from "./middleware/errorHandler.js";
 import { logAuditEvent } from "./audit.js";
 import { validate } from "./middleware/validate.js";
-import { globalLimiter, authLimiter } from "./middleware/rateLimiters.js";
-import { signatureUpload, documentUpload, saveUploadedFile, deleteUploadedFile } from "./middleware/upload.js";
+import { globalLimiter, authLimiter, adminActionLimiter, uploadLimiter } from "./middleware/rateLimiters.js";
+import { signatureUpload, documentUpload, reportUpload, saveUploadedFile, deleteUploadedFile } from "./middleware/upload.js";
 import { generateSecureFilename } from "./utils/uploadHelpers.js";
 import { generateToken, requireAuth, requireRole, requireDevOrAdmin } from "./middleware/auth.js";
 import * as tokenService from "./services/tokenService.js";
@@ -44,11 +44,16 @@ import {
   statusUpdateSchema,
   deleteJobSchema,
   userCreationSchema,
+  adminCreateUserSchema,
+  adminUpdateUserSchema,
+  adminSetPasswordSchema,
+  profileUpdateSchema,
   signatureUploadSchema,
   pdfGenerationSchema,
   aiDescriptionSchema,
   idParamSchema,
 } from "./validators/schemas.js";
+import { collectJobCardIssues, throwIfIncomplete } from "./validators/jobCardValidation.js";
 import { fileURLToPath } from "url";
 import path from "path";
 
@@ -100,8 +105,30 @@ app.use(
     },
   })
 );
+const configuredFrontendOrigins = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || "http://localhost:5173,http://127.0.0.1:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+// Convenience for local work only. In production the allowlist above is the whole
+// policy — otherwise any page served from a developer machine or the office LAN
+// would be a permitted origin against live data.
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const isAllowedDevelopmentOrigin = (origin) =>
+  !IS_PRODUCTION && /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):\d+$/.test(origin);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  origin: (origin, callback) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const allowedOrigins = new Set(configuredFrontendOrigins);
+    if (allowedOrigins.has(origin) || isAllowedDevelopmentOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS origin not allowed: ${origin}`));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: "2mb" }));
@@ -111,12 +138,49 @@ app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 app.use(requestCorrelation);
 app.use(requestLogger);
 app.use(globalLimiter);
+app.use(["/api/admin/users", "/api/admin/users/:id/password", "/api/admin/users/:id/toggle-active"], adminActionLimiter);
 
 // FIX 1: Use __dirname-relative path for uploads so Azure resolves it correctly
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+app.post("/api/uploads", requireAuth, uploadLimiter, (req, res, next) => {
+  reportUpload(req, res, async (uploadError) => {
+    if (uploadError) return next(new AppError(uploadError.message, 400, "UPLOAD_ERROR"));
+    try {
+      const kind = String(req.body?.kind || "photo").toLowerCase();
+      const files = Array.isArray(req.files) ? req.files : [];
+      if (!files.length) return next(new AppError("At least one file is required", 400, "UPLOAD_EMPTY"));
+      if (kind === "sound" && files.length !== 1) return next(new AppError("Only one sound file may be uploaded", 400, "UPLOAD_INVALID_COUNT"));
+      if (!["photo", "sound"].includes(kind)) return next(new AppError("Upload kind must be photo or sound", 400, "UPLOAD_INVALID_KIND"));
+      for (const file of files) {
+        const isPhoto = file.mimetype.startsWith("image/");
+        const isSound = file.mimetype.startsWith("audio/");
+        if ((kind === "photo" && !isPhoto) || (kind === "sound" && !isSound)) return next(new AppError(`Invalid ${kind} file type`, 400, "UPLOAD_INVALID_TYPE"));
+        if (kind === "photo" && file.size > 10 * 1024 * 1024) return next(new AppError("Photo files must be 10MB or smaller", 400, "UPLOAD_TOO_LARGE"));
+      }
+      const saved = await Promise.all(files.map((file) => saveUploadedFile(file, req.user.id, "report", kind)));
+      const failed = saved.find((file) => file.error);
+      if (failed) return next(new AppError(failed.error, 500, "UPLOAD_SAVE_FAILED"));
+      // Return the storage provider's own URL: a path for local storage, an absolute
+      // blob URL for Azure. Host-qualifying it here would bake the current hostname
+      // into every stored reference and break them on a domain change or slot swap.
+      const first = saved[0];
+      return res.status(201).json({ success: true, fileUrl: first.url, fileName: first.filename, files: saved.map((file) => ({ fileUrl: file.url, fileName: file.filename })) });
+    } catch (error) {
+      return next(error);
+    }
+  });
+});
+
 // ─── Swagger UI ──────────────────────────────────────────────────────────────
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
+// Swagger UI is a browser page, so it can't carry a Bearer token — instead of
+// publishing the whole API surface to anyone who finds the path, it is off in
+// production unless ENABLE_API_DOCS is explicitly set.
+if (!IS_PRODUCTION || process.env.ENABLE_API_DOCS === "true") {
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
+} else {
+  logger.info("API docs disabled in production", { eventType: "startup" });
+}
 
 // ─── Integrations routes ──────────────────────────────────────────────────────
 app.use("/integrations", integrationsRouter);
@@ -195,16 +259,7 @@ const mapLabor = (l) => {
     };
 };
 
-const INCOMPLETE_JOB_ERROR = "Job card is incomplete. Please complete all required fields.";
 
-const isChecklistComplete = (items) => {
-  const allowedStatuses = new Set(["done", "na", "pending"]);
-  return (
-    Array.isArray(items) &&
-    items.length > 0 &&
-    items.every((item) => allowedStatuses.has(String(item?.status ?? "").trim().toLowerCase()))
-  );
-};
 
 const SYSTEM_USER = "system_user";
 
@@ -297,13 +352,17 @@ app.get(
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-app.get(
-  "/test-db",
-  asyncHandler(async (_req, res) => {
-    const result = await pool.query("SELECT NOW()");
-    return sendSuccess(res, { time: result.rows[0] });
-  })
-);
+// Development helper only. /ready covers the same ground for monitoring without
+// confirming database reachability to unauthenticated callers in production.
+if (!IS_PRODUCTION) {
+  app.get(
+    "/test-db",
+    asyncHandler(async (_req, res) => {
+      const result = await pool.query("SELECT NOW()");
+      return sendSuccess(res, { time: result.rows[0] });
+    })
+  );
+}
 
 /**
  * @swagger
@@ -334,6 +393,103 @@ app.get(
     } catch (err) {
       return sendError(res, 503, "Database connectivity failed", "DATABASE_UNAVAILABLE", { error: err.message });
     }
+  })
+);
+
+// Search customer master data. Deployments that have a dedicated customers table
+// use it; older installations safely fall back to active users.
+app.get(["/customers/search", "/api/customers/search"], requireAuth, asyncHandler(async (req, res) => {
+  const query = String(req.query.q || "").trim();
+  if (query.length < 2) return res.json([]);
+  try {
+    const result = await pool.query(
+      `SELECT id, name, code, email, contact FROM customers
+       WHERE active IS NOT FALSE AND (name ILIKE $1 OR code ILIKE $1)
+       ORDER BY name LIMIT 25`, [`%${query}%`]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    if (error.code !== "42P01") throw error;
+    const result = await pool.query(
+      `SELECT id, name, NULL::text AS code, email, NULL::text AS contact FROM users
+       WHERE is_active IS NOT FALSE AND name ILIKE $1 ORDER BY name LIMIT 25`, [`%${query}%`]
+    );
+    return res.json(result.rows);
+  }
+}));
+
+app.get(["/brands", "/api/brands"], requireAuth, asyncHandler(async (_req, res) => {
+  const result = await pool.query("SELECT id, name FROM brands WHERE active = TRUE ORDER BY name");
+  return res.json(result.rows);
+}));
+
+// ─── PUT /users/:id ───────────────────────────────────────────────────────────
+// Self-service profile update behind the Profile Settings screen. Admins may edit
+// anyone; everybody else may only edit their own record. Role, email and active
+// status are deliberately not editable here — those belong to /api/admin/users.
+app.put(
+  "/users/:id",
+  requireAuth,
+  validate({ params: idParamSchema, body: profileUpdateSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.id);
+
+    if (req.user.role !== "admin" && req.user.id !== userId) {
+      logAuditEvent(req, "Blocked Profile Update", "user", userId, null, {
+        reason: "Attempted to update another user's profile",
+        actorId: req.user.id,
+      });
+      throw new AppError("You can only update your own profile", 403, "FORBIDDEN");
+    }
+
+    const existing = await pool.query(
+      "SELECT id, name, phone, department FROM users WHERE id = $1",
+      [userId]
+    );
+    if (existing.rows.length === 0) {
+      throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+
+    const { fullName, phone, department } = req.body ?? {};
+    const updates = [];
+    const values = [];
+    const changed = [];
+    let index = 1;
+
+    if (fullName !== undefined) {
+      updates.push(`name = $${index++}`);
+      values.push(fullName);
+      changed.push("name");
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${index++}`);
+      values.push(phone);
+      changed.push("phone");
+    }
+    if (department !== undefined) {
+      updates.push(`department = $${index++}`);
+      values.push(department);
+      changed.push("department");
+    }
+    if (updates.length === 0) {
+      throw new AppError("No profile fields to update", 400, "NO_UPDATE_FIELDS");
+    }
+
+    updates.push("updated_at = CURRENT_TIMESTAMP");
+    values.push(userId);
+
+    const result = await pool.query(
+      `UPDATE users SET ${updates.join(", ")} WHERE id = $${index}
+       RETURNING id, name, name AS "fullName", email, role, phone, department`,
+      values
+    );
+
+    logAuditEvent(req, "Profile Updated", "user", userId, existing.rows[0], {
+      fields: changed,
+      ...result.rows[0],
+    });
+
+    return sendSuccess(res, result.rows[0], "Profile updated successfully");
   })
 );
 
@@ -499,94 +655,31 @@ app.post(
       safeJobData.service_charge = 0;
     }
 
-    // PRODUCTION VALIDATION: All mandatory fields
-    // ─── MANDATORY CUSTOMER INFORMATION ───
-    if (!customer_name?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!ref_no?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!job_card_no?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!job_date?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!service_type?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!customer_code?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!attention_of?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!contact_no?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!sales_area?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-
-    // ─── MANDATORY EQUIPMENT DETAILS ───
-    if (!equipment_model?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!equipment_brand_description?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!equipment_part_no?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!equipment_serial_no?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    if (!equipment_year?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-
-    // ─── MANDATORY CHECKLIST VALIDATION ───
-    const compressorChecklist = safeJobData?.compressor_checklist || [];
-    const dryerChecklist = safeJobData?.dryer_checklist || [];
-
-    if (!isChecklistComplete(compressorChecklist) || !isChecklistComplete(dryerChecklist)) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-
-    // ─── MANDATORY PARTS VALIDATION ───
-    if (!Array.isArray(safeParts) || safeParts.length === 0) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    for (let i = 0; i < safeParts.length; i++) {
-        const part = safeParts[i];
-        if (!part.part_name?.trim()) {
-        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-        }
-        if (!part.part_number?.trim()) {
-        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-        }
-        if (!part.quantity || Number(part.quantity) <= 0) {
-        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-        }
-    }
-
-    // ─── MANDATORY LABOR VALIDATION ───
-    if (!Array.isArray(safeLabor) || safeLabor.length === 0) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    for (let i = 0; i < safeLabor.length; i++) {
-        const labor = safeLabor[i];
-        if (!labor.hours || Number(labor.hours) <= 0) {
-        throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-        }
-    }
-
-    // ─── MANDATORY MANAGER NAME ───
-    const engineerNameFromJobData = safeJobData?.engineer_name;
-    if (!engineerNameFromJobData?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
+    // ─── MANDATORY FIELDS ─────────────────────────────────────────────────────
+    // One pass, every problem reported together so the form can mark each field.
+    throwIfIncomplete(
+      collectJobCardIssues({
+        fields: {
+          customer_name,
+          ref_no,
+          job_card_no,
+          job_date,
+          service_type,
+          customer_code,
+          attention_of,
+          contact_no,
+          sales_area,
+          equipment_model,
+          equipment_brand_description,
+          equipment_part_no,
+          equipment_serial_no,
+          equipment_year,
+        },
+        jobData: safeJobData,
+        parts: safeParts,
+        labor: safeLabor,
+      })
+    );
 
     const managerIdPayload = req.body?.manager_id ?? req.body?.job_data?.manager_id;
     const managerName = req.body?.manager_name || req.body?.job_data?.manager_name || null;
@@ -609,7 +702,9 @@ app.post(
     
     // Manager Name is mandatory
     if (!manager_id) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+      throwIfIncomplete([
+        { field: "manager_id", message: "A manager must be assigned to the job." },
+      ]);
     }
 
     const engineerIdPayload = req.body?.engineer_id ?? req.body?.job_data?.engineer_id;
@@ -708,6 +803,25 @@ app.post(
 
         const createdJob = result.rows[0];
         const jobId = createdJob.id;
+
+        await client.query(
+          `UPDATE job_master SET
+             customer_location = $1, site_contact = $2, time_in = $3, time_out = $4,
+             report_date = $5, customer_po_ref = $6, complaint_issue_description = $7,
+             customer_equipment_id = $8, equipment_type = $9, meter_reading = $10,
+             capacity_rating = $11, controller_panel_model = $12, alarm_fault_code = $13,
+             last_service_date = $14, last_service_hours = $15, oil_refrigerant_fuel_type = $16,
+             duty_cycle = $17, warranty_status = $18, warranty_claim_ref = $19, previous_job_ref = $20,
+             customer_issues = $21::jsonb, operating_data = $22::jsonb, findings = $23::jsonb, evidence = $24::jsonb
+           WHERE id = $25`,
+          [req.body.customer_location ?? null, req.body.site_contact ?? null, req.body.time_in ?? null, req.body.time_out ?? null,
+            req.body.report_date ?? null, req.body.customer_po_ref ?? null, req.body.complaint_issue_description ?? null,
+            req.body.customer_equipment_id ?? null, req.body.equipment_type ?? null, req.body.meter_reading ?? null,
+            req.body.capacity_rating ?? null, req.body.controller_panel_model ?? null, req.body.alarm_fault_code ?? null,
+            req.body.last_service_date ?? null, req.body.last_service_hours ?? null, req.body.oil_refrigerant_fuel_type ?? null,
+            req.body.duty_cycle ?? null, req.body.warranty_status ?? null, req.body.warranty_claim_ref ?? null, req.body.previous_job_ref ?? null,
+            JSON.stringify(req.body.customer_issues ?? []), JSON.stringify(req.body.operating_data ?? {}), JSON.stringify(req.body.findings ?? {}), JSON.stringify(req.body.evidence ?? {}), jobId]
+        );
 
         if (safeParts.length > 0) {
           for (const part of safeParts) {
@@ -981,6 +1095,10 @@ app.get(
                 attention_of,
                 email,
                 contact_no,
+                customer_location, site_contact, time_in, time_out, report_date, customer_po_ref, complaint_issue_description,
+                customer_equipment_id, equipment_type, meter_reading, capacity_rating, controller_panel_model, alarm_fault_code,
+                last_service_date, last_service_hours, oil_refrigerant_fuel_type, duty_cycle, warranty_status, warranty_claim_ref, previous_job_ref,
+                customer_issues, operating_data, findings, evidence,
                 sales_area,
                 service_type,
                 under_warranty,
@@ -1069,70 +1187,16 @@ app.put(
       throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
     }
 
-    // ─── PRODUCTION VALIDATION: Required payload on update ───
-    const requiredStringFields = [
-      req.body.customer_name,
-      req.body.ref_no,
-      req.body.job_card_no,
-      req.body.job_date,
-      req.body.service_type,
-      req.body.customer_code,
-      req.body.attention_of,
-      req.body.contact_no,
-      req.body.sales_area,
-      req.body.equipment_model,
-      req.body.equipment_brand_description,
-      req.body.equipment_part_no,
-      req.body.equipment_serial_no,
-      req.body.equipment_year,
-    ];
-
-    if (requiredStringFields.some((value) => typeof value !== "string" || !value.trim())) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-
-    const jobDataToUpdate = req.body.job_data;
-    if (!jobDataToUpdate || typeof jobDataToUpdate !== "object") {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-
-    if (!jobDataToUpdate.engineer_name || !String(jobDataToUpdate.engineer_name).trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-
-    const compressorChecklistToValidate = jobDataToUpdate.compressor_checklist;
-    const dryerChecklistToValidate = jobDataToUpdate.dryer_checklist;
-    if (!isChecklistComplete(compressorChecklistToValidate) || !isChecklistComplete(dryerChecklistToValidate)) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-
-    if (!Array.isArray(req.body.parts) || req.body.parts.length === 0) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    for (let i = 0; i < req.body.parts.length; i++) {
-      const part = req.body.parts[i];
-      if (!part.description?.trim() && !part.part_name?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-      }
-      if (!part.partNumber?.trim() && !part.part_number?.trim()) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-      }
-      const qty = Number(part.qty ?? part.quantity);
-      if (!qty || qty <= 0) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-      }
-    }
-
-    if (!Array.isArray(req.body.labor) || req.body.labor.length === 0) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-    }
-    for (let i = 0; i < req.body.labor.length; i++) {
-      const laborRow = req.body.labor[i];
-      const hours = Number(laborRow.hours);
-      if (!hours || hours <= 0) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
-      }
-    }
+    // ─── MANDATORY FIELDS ─────────────────────────────────────────────────────
+    // Same single pass as the create route, so a rejected update names every field.
+    throwIfIncomplete(
+      collectJobCardIssues({
+        fields: req.body,
+        jobData: req.body.job_data,
+        parts: req.body.parts,
+        labor: req.body.labor,
+      })
+    );
 
     const updates = [];
     const values = [];
@@ -1149,7 +1213,9 @@ app.put(
     const managerIdPayload = req.body?.manager_id ?? req.body?.job_data?.manager_id;
     const managerNamePayload = req.body?.manager_name ?? req.body?.job_data?.manager_name;
     if ((managerIdPayload === undefined || managerIdPayload === null) && !managerNamePayload) {
-      throw new AppError(INCOMPLETE_JOB_ERROR, 400, "VALIDATION_ERROR");
+      throwIfIncomplete([
+        { field: "manager_id", message: "A manager must be assigned to the job." },
+      ]);
     }
     if (managerIdPayload !== undefined || managerNamePayload !== undefined) {
       if (managerIdPayload === null) {
@@ -1221,6 +1287,8 @@ app.put(
       "attention_of",
       "email",
       "contact_no",
+      "customer_location", "site_contact", "time_in", "time_out", "report_date", "customer_po_ref", "complaint_issue_description",
+      "customer_equipment_id", "equipment_type", "meter_reading", "capacity_rating", "controller_panel_model", "alarm_fault_code", "last_service_date", "last_service_hours", "oil_refrigerant_fuel_type", "duty_cycle", "warranty_status", "warranty_claim_ref", "previous_job_ref", "customer_issues", "operating_data", "findings", "evidence",
       "other_expenses",
       "discount_percentage",
       "job_data",
@@ -1229,7 +1297,8 @@ app.put(
     for (const field of allowedUpdateFields) {
       if (field in req.body) {
         updates.push(`${field} = $${index}`);
-        const fieldValue = field === "job_data" ? req.body[field] : req.body[field];
+        const fieldValue = ["job_data", "customer_issues", "operating_data", "findings", "evidence"].includes(field)
+          ? JSON.stringify(req.body[field]) : req.body[field];
         values.push(fieldValue);
         index += 1;
       }
@@ -2138,7 +2207,7 @@ app.post(
     }
 
     const userResult = await pool.query(
-      "SELECT id, name, email, password_hash, role, signature_url FROM users WHERE email = $1 AND is_active = true",
+      "SELECT id, name, email, password_hash, role, signature_url, phone, department FROM users WHERE email = $1 AND is_active = true",
       [email]
     );
 
@@ -2211,6 +2280,9 @@ app.post(
           email: user.email,
           role: user.role,
           signature_url: user.signature_url,
+          // Profile Settings renders these, so they have to survive a fresh login.
+          phone: user.phone ?? "",
+          department: user.department ?? "",
         },
       },
       200
@@ -2266,6 +2338,16 @@ app.post(
         reason: "Refresh token is invalid, expired, or revoked",
       });
       throw new AppError("Invalid refresh token", 401, "INVALID_REFRESH_TOKEN");
+    }
+
+    // A deactivated account must not be able to keep minting access tokens, even if
+    // is_active was flipped directly in the database rather than through /api/admin.
+    if (tokenRecord.user_is_active === false) {
+      await tokenService.revokeRefreshTokenByHash(refreshTokenHash);
+      logAuditEvent(req, "Blocked Refresh For Inactive User", "auth", tokenRecord.user_id, null, {
+        reason: "Account is deactivated",
+      });
+      throw new AppError("Account is deactivated", 401, "ACCOUNT_DEACTIVATED");
     }
 
     const client = await pool.connect();
@@ -2440,6 +2522,289 @@ app.post(
     });
 
     return sendSuccess(res, result.rows[0]);
+  })
+);
+
+// ─── Admin user management routes ─────────────────────────────────────────────
+// All routes below are admin-only and rate limited via adminActionLimiter.
+
+const revokeAllRefreshTokensForUser = (userId) =>
+  pool.query(
+    "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+    [userId]
+  );
+
+/**
+ * @swagger
+ * /api/admin/users:
+ *   get:
+ *     summary: List all users
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of users
+ */
+app.get(
+  "/api/admin/users",
+  requireAuth,
+  requireRole("admin"),
+  asyncHandler(async (_req, res) => {
+    const result = await pool.query(
+      `SELECT id, name AS full_name, email, role, is_active
+         FROM users
+        ORDER BY name ASC`
+    );
+    return sendSuccess(res, result.rows);
+  })
+);
+
+/**
+ * @swagger
+ * /api/admin/users:
+ *   post:
+ *     summary: Create a user
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       201:
+ *         description: User created
+ */
+app.post(
+  "/api/admin/users",
+  requireAuth,
+  requireRole("admin"),
+  validate({ body: adminCreateUserSchema }),
+  asyncHandler(async (req, res) => {
+    const { name, email, password, role } = req.body ?? {};
+
+    const existing = await pool.query("SELECT id FROM users WHERE LOWER(email) = LOWER($1)", [email]);
+    if (existing.rows.length > 0) {
+      throw new AppError("A user with that email already exists", 409, "USER_EMAIL_EXISTS");
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      `INSERT INTO users (name, email, password_hash, role, is_active)
+            VALUES ($1, $2, $3, $4, TRUE)
+         RETURNING id, name AS full_name, email, role, is_active`,
+      [name, email, hashedPassword, role]
+    );
+
+    logAuditEvent(req, "Admin User Created", "user", result.rows[0].id, null, {
+      email: result.rows[0].email,
+      role: result.rows[0].role,
+    });
+
+    return sendSuccess(res, result.rows[0], "User created successfully", 201);
+  })
+);
+
+/**
+ * @swagger
+ * /api/admin/users/{id}:
+ *   put:
+ *     summary: Update a user's profile
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User updated
+ */
+app.put(
+  "/api/admin/users/:id",
+  requireAuth,
+  requireRole("admin"),
+  validate({ params: idParamSchema, body: adminUpdateUserSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.id);
+    const { name, email, role } = req.body ?? {};
+
+    const existingResult = await pool.query(
+      "SELECT id, name, email, role FROM users WHERE id = $1",
+      [userId]
+    );
+    if (existingResult.rows.length === 0) {
+      throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+    const existing = existingResult.rows[0];
+
+    // Prevent an admin from demoting themselves out of admin access.
+    if (userId === req.user.id && role && role !== existing.role) {
+      throw new AppError("You cannot change your own role", 400, "ADMIN_SELF_ROLE_CHANGE");
+    }
+
+    if (email && email.toLowerCase() !== existing.email.toLowerCase()) {
+      const duplicate = await pool.query(
+        "SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id <> $2",
+        [email, userId]
+      );
+      if (duplicate.rows.length > 0) {
+        throw new AppError("A user with that email already exists", 409, "USER_EMAIL_EXISTS");
+      }
+    }
+
+    const result = await pool.query(
+      `UPDATE users
+          SET name = COALESCE($1, name),
+              email = COALESCE($2, email),
+              role = COALESCE($3, role),
+              updated_at = NOW()
+        WHERE id = $4
+    RETURNING id, name AS full_name, email, role, is_active`,
+      [name ?? null, email ?? null, role ?? null, userId]
+    );
+
+    logAuditEvent(
+      req,
+      "Admin User Updated",
+      "user",
+      userId,
+      { name: existing.name, email: existing.email, role: existing.role },
+      { name: result.rows[0].full_name, email: result.rows[0].email, role: result.rows[0].role }
+    );
+
+    return sendSuccess(res, result.rows[0], "User updated successfully");
+  })
+);
+
+/**
+ * @swagger
+ * /api/admin/users/{id}/password:
+ *   put:
+ *     summary: Set a user's password
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Password updated
+ */
+app.put(
+  "/api/admin/users/:id/password",
+  requireAuth,
+  requireRole("admin"),
+  validate({ params: idParamSchema, body: adminSetPasswordSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.id);
+    const { newPassword } = req.body ?? {};
+
+    const existing = await pool.query("SELECT id, email FROM users WHERE id = $1", [userId]);
+    if (existing.rows.length === 0) {
+      throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query("UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2", [
+      hashedPassword,
+      userId,
+    ]);
+
+    // Force re-authentication everywhere the old password was used.
+    await revokeAllRefreshTokensForUser(userId);
+
+    logAuditEvent(req, "Admin Password Reset", "user", userId, null, {
+      email: existing.rows[0].email,
+    });
+
+    return sendSuccess(res, { id: userId }, "Password updated successfully");
+  })
+);
+
+/**
+ * @swagger
+ * /api/admin/users/{id}/toggle-active:
+ *   put:
+ *     summary: Enable or disable a user account
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Status updated
+ */
+app.put(
+  "/api/admin/users/:id/toggle-active",
+  requireAuth,
+  requireRole("admin"),
+  validate({ params: idParamSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.id);
+
+    if (userId === req.user.id) {
+      throw new AppError("You cannot change your own account status", 400, "ADMIN_SELF_DEACTIVATE");
+    }
+
+    const existing = await pool.query("SELECT id, email, is_active FROM users WHERE id = $1", [userId]);
+    if (existing.rows.length === 0) {
+      throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+
+    const result = await pool.query(
+      `UPDATE users
+          SET is_active = NOT COALESCE(is_active, TRUE),
+              updated_at = NOW()
+        WHERE id = $1
+    RETURNING id, name AS full_name, email, role, is_active`,
+      [userId]
+    );
+    const updated = result.rows[0];
+
+    // A disabled account must not be able to mint new access tokens.
+    if (!updated.is_active) {
+      await revokeAllRefreshTokensForUser(userId);
+    }
+
+    logAuditEvent(
+      req,
+      updated.is_active ? "Admin User Activated" : "Admin User Deactivated",
+      "user",
+      userId,
+      { is_active: existing.rows[0].is_active },
+      { is_active: updated.is_active, email: updated.email }
+    );
+
+    return sendSuccess(
+      res,
+      updated,
+      updated.is_active ? "User activated successfully" : "User deactivated successfully"
+    );
+  })
+);
+
+/**
+ * @swagger
+ * /api/admin/audit-log:
+ *   get:
+ *     summary: Recent audit log entries
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Audit entries
+ */
+app.get(
+  "/api/admin/audit-log",
+  requireAuth,
+  requireRole("admin"),
+  asyncHandler(async (req, res) => {
+    const parsedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 25;
+
+    const result = await pool.query(
+      `SELECT id, user_id, user_name, user_role, action_type, entity_type,
+              entity_id, endpoint, method, ip_address, created_at
+         FROM audit_logs
+        ORDER BY created_at DESC, id DESC
+        LIMIT $1`,
+      [limit]
+    );
+
+    return sendSuccess(res, result.rows);
   })
 );
 

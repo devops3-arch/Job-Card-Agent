@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, Package, FileText, FileSpreadsheet, Pencil } from "lucide-react";
+import { Loader2, CheckCircle2, Package, Wrench, FileText, FileSpreadsheet, Pencil } from "lucide-react";
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
 import { SERVICE_CHARGE_MAP } from "@/types/jobCard";
@@ -10,8 +10,17 @@ import type { JobCardData } from "@/types/jobCard";
 interface Part {
     id: number;
     part_name: string;
+    part_number?: string | null;
     quantity: number;
     unit_price: number;
+    total: number;
+}
+
+interface Labor {
+    id: number;
+    description: string;
+    hours: number;
+    rate: number;
     total: number;
 }
 
@@ -24,8 +33,9 @@ interface Props {
 const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
     const [job, setJob]         = useState<any>(null);
     const [parts, setParts]     = useState<Part[]>([]);
-    const [rawData, setRawData] = useState<any>(null);
+    const [labor, setLabor]     = useState<Labor[]>([]);
     const [prices, setPrices]   = useState<Record<number, string>>({});
+    const [rates, setRates]     = useState<Record<number, string>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving]   = useState(false);
     const [approved, setApproved] = useState(false);
@@ -36,12 +46,20 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             .then(d => {
                 if (d.success && d.data) {
                     setJob(d.data.job);
-                    setRawData(d.data);
                     const p: Part[] = d.data.parts || [];
                     setParts(p);
                     const init: Record<number, string> = {};
                     p.forEach(pt => { init[pt.id] = Number(pt.unit_price) > 0 ? String(pt.unit_price) : ""; });
                     setPrices(init);
+
+                    // Engineer submissions are stored with labour rates zeroed, so the
+                    // manager prices labour here alongside parts.
+                    const l: Labor[] = d.data.labor || [];
+                    setLabor(l);
+                    const initRates: Record<number, string> = {};
+                    l.forEach(row => { initRates[row.id] = Number(row.rate) > 0 ? String(row.rate) : ""; });
+                    setRates(initRates);
+
                     if (d.data.job?.status === "APPROVED") setApproved(true);
                 }
             })
@@ -53,22 +71,60 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
         setPrices(prev => ({ ...prev, [id]: val }));
     };
 
-    const buildJobCardData = (): JobCardData => {
-        let storedJson: any = {};
-        try {
-            storedJson = (typeof job?.job_data === 'string' ? JSON.parse(job.job_data) : job?.job_data) || {};
-        } catch { storedJson = {}; }
+    const setRate = (id: number, val: string) => {
+        setRates(prev => ({ ...prev, [id]: val }));
+    };
 
+    // job_data is JSONB but can arrive as a string depending on the driver.
+    const storedJson: any = (() => {
+        try {
+            return (typeof job?.job_data === "string" ? JSON.parse(job.job_data) : job?.job_data) || {};
+        } catch {
+            return {};
+        }
+    })();
+
+    // Mirrors the server's service-charge rules so the totals shown here match the stored ones.
+    const serviceCharge = job?.service_type === "warranty"
+        ? 0
+        : (job?.service_type === "breakdown_call" && (storedJson.breakdown_call_type === "warranty_amc" || storedJson.coverage_type === "warranty_amc"))
+            ? 0
+            : job?.sales_area === "Abu Dhabi Variable"
+                ? Number(storedJson.service_charge ?? 0)
+                : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
+
+    // Same formula as pricingService.calculatePricingTotals on the server.
+    const VAT_PERCENT = 5;
+    const partsTotal  = parts.reduce((s, p) => s + (Number(p.quantity) || 0) * (Number(prices[p.id]) || 0), 0);
+    const labourTotal = labor.reduce((s, l) => s + (Number(l.hours) || 0) * (Number(rates[l.id]) || 0), 0);
+    const taxable     = partsTotal + labourTotal + serviceCharge;
+    const vatAmount   = taxable * (VAT_PERCENT / 100);
+    const grandTotal  = taxable + vatAmount;
+
+    // Two error shapes come back: schema failures put the text at the top level with
+    // details keyed by "path", while thrown AppErrors nest the message and key by "field".
+    const readApiError = async (res: Response, fallback: string) => {
+        try {
+            const payload = await res.json();
+            const message = payload?.error?.message || payload?.message || fallback;
+            const details = (Array.isArray(payload?.error?.details) ? payload.error.details : [])
+                .map((d: any) => {
+                    const key = String(d?.field ?? d?.path ?? "").trim();
+                    const text = String(d?.message ?? "").trim();
+                    return key ? `${key}: ${text}`.trim() : text;
+                })
+                .filter(Boolean);
+            if (!details.length) return message;
+            const shown = details.slice(0, 3).join("; ");
+            return `${message} — ${shown}${details.length > 3 ? ` (+${details.length - 3} more)` : ""}`;
+        } catch {
+            return fallback;
+        }
+    };
+
+    const buildJobCardData = (): JobCardData => {
         const compressorChecklist = Array.isArray(storedJson.compressor_checklist) ? storedJson.compressor_checklist : [];
         const dryerChecklist      = Array.isArray(storedJson.dryer_checklist)      ? storedJson.dryer_checklist      : [];
-
-        const serviceChargeValue = job?.service_type === "warranty"
-            ? 0
-            : (job?.service_type === "breakdown_call" && (storedJson.breakdown_call_type === "warranty_amc" || storedJson.coverage_type === "warranty_amc"))
-                ? 0
-                : job?.sales_area === "Abu Dhabi Variable"
-                    ? Number(storedJson.service_charge ?? 0)
-                    : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
 
         return {
             customerInfo: {
@@ -103,71 +159,154 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                     totalPrice:  qty * price,
                 };
             }),
-            labor: (rawData?.labor || []).map((l: any) => {
+            labor: labor.map(l => {
                 const hours = Number(l.hours) || 0;
-                const rate  = Number(l.rate) || 0;
+                const rate  = Number(rates[l.id]) || Number(l.rate) || 0;
                 return {
                     id:          String(l.id),
                     description: l.description || "",
                     hours,
                     ratePerHour: rate,
-                    totalCost:   Number(l.total) || (hours * rate),
+                    totalCost:   hours * rate,
                 };
             }),
             otherExpenses:      Number(job?.other_expenses) || 0,
             discountPercentage: Number(job?.discount_percentage) || 0,
             managerName:        job?.manager_name || "",
-            serviceCharge:      serviceChargeValue,
+            serviceCharge:      serviceCharge,
         };
     };
 
+    // PUT /jobs/:id validates a flat snake_case body against a strict schema, so every
+    // key here must exist in jobUpdateSchema and every mandatory field must be present.
+    const buildUpdatePayload = () => {
+        const payload: Record<string, any> = {
+            customer_name:               job?.customer_name ?? "",
+            ref_no:                      job?.ref_no ?? "",
+            job_card_no:                 job?.job_card_no ?? "",
+            job_date:                    job?.job_date ?? "",
+            service_type:                job?.service_type ?? "",
+            customer_code:               job?.customer_code ?? "",
+            attention_of:                job?.attention_of ?? "",
+            contact_no:                  job?.contact_no ?? "",
+            sales_area:                  job?.sales_area ?? "",
+            equipment_model:             job?.equipment_model ?? "",
+            equipment_brand_description: job?.equipment_brand_description ?? "",
+            equipment_part_no:           job?.equipment_part_no ?? "",
+            equipment_serial_no:         job?.equipment_serial_no ?? "",
+            equipment_year:              job?.equipment_year ?? "",
+            other_expenses:              Number(job?.other_expenses) || 0,
+            discount_percentage:         Number(job?.discount_percentage) || 0,
+            job_data:                    storedJson,
+            parts: parts.map(p => {
+                const qty   = Number(p.quantity) || 0;
+                const price = Number(prices[p.id]) || 0;
+                return {
+                    part_name:   p.part_name || "",
+                    part_number: p.part_number ?? "",
+                    quantity:    qty,
+                    unit_price:  price,
+                    total:       qty * price,
+                };
+            }),
+            labor: labor.map(l => {
+                const hours = Number(l.hours) || 0;
+                const rate  = Number(rates[l.id]) || 0;
+                return {
+                    description: l.description || "",
+                    hours,
+                    rate,
+                    total: hours * rate,
+                };
+            }),
+        };
+
+        // manager_id is what the strict schema accepts; manager_name only travels inside job_data.
+        if (job?.manager_id) payload.manager_id = Number(job.manager_id);
+        // email must be a valid address when present, so omit it rather than send "".
+        if (job?.email && String(job.email).trim()) payload.email = String(job.email).trim();
+
+        return payload;
+    };
+
+    // Approval requires every part price and every labour rate to be greater than zero,
+    // so both are checked here rather than letting the server reject the job later.
+    const findBlockingIssue = (): string | null => {
+        if (parts.length === 0) {
+            return "This job has no parts. The engineer must add at least one part before it can be approved.";
+        }
+        if (parts.some(p => !(Number(prices[p.id]) > 0))) {
+            return "Enter a price greater than 0 for every part before approving.";
+        }
+        const noPartNumber = parts.find(p => !String(p.part_number ?? "").trim());
+        if (noPartNumber) {
+            return `"${noPartNumber.part_name}" has no part number. The engineer must add one before this job can be saved.`;
+        }
+        if (labor.length === 0) {
+            return "This job has no labour lines. The engineer must add at least one before it can be approved.";
+        }
+        if (labor.some(l => !(Number(l.hours) > 0))) {
+            return "Every labour line needs hours greater than 0. Ask the engineer to correct the job card.";
+        }
+        if (labor.some(l => !(Number(rates[l.id]) > 0))) {
+            return "Enter an hourly rate greater than 0 for every labour line before approving.";
+        }
+        if (!String(storedJson.engineer_name ?? "").trim()) {
+            return "This job has no engineer name recorded, which the server requires. Ask the engineer to resubmit it.";
+        }
+        const checklistComplete = (items: any) =>
+            Array.isArray(items) &&
+            items.length > 0 &&
+            items.every((item: any) => ["done", "na", "pending"].includes(String(item?.status ?? "").trim().toLowerCase()));
+        if (!checklistComplete(storedJson.compressor_checklist) || !checklistComplete(storedJson.dryer_checklist)) {
+            return "The compressor and dryer checklists are incomplete. The engineer must finish them before approval.";
+        }
+        return null;
+    };
+
     const handleSave = async () => {
-        const anyMissing = parts.some(p => !prices[p.id] || Number(prices[p.id]) <= 0);
-        if (anyMissing) {
-            toast.error("Please enter a price greater than 0 for all parts before approving.");
+        const issue = findBlockingIssue();
+        if (issue) {
+            toast.error(issue);
             return;
         }
         setSaving(true);
         try {
-            const partsTotal = parts.reduce((s, p) => s + Number(p.quantity) * Number(prices[p.id]), 0);
-            let storedJson: any = {};
-            try {
-                storedJson = (typeof job?.job_data === "string" ? JSON.parse(job.job_data) : job?.job_data) || {};
-            } catch {
-                storedJson = {};
-            }
-            const serviceChargeValue = job?.service_type === "warranty"
-                ? 0
-                : (job?.service_type === "breakdown_call" && (storedJson.breakdown_call_type === "warranty_amc" || storedJson.coverage_type === "warranty_amc"))
-                    ? 0
-                    : job?.sales_area === "Abu Dhabi Variable"
-                        ? Number(storedJson.service_charge ?? 0)
-                        : SERVICE_CHARGE_MAP[job?.sales_area || ""] || 0;
-            const taxable    = partsTotal + serviceChargeValue;
-            const vatAmount  = taxable * 0.05;
-            const grandTotal = taxable + vatAmount;
+            // 1. Persist the prices. Without this the parts and labour rows keep the zeros
+            //    the engineer's submission wrote, and the approval check below always fails.
+            const jobRes = await apiFetch(`/jobs/${jobId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(buildUpdatePayload()),
+            });
+            if (!jobRes.ok) throw new Error(await readApiError(jobRes, "Failed to save prices"));
 
+            // 2. Submit pricing. The server recomputes the totals from the rows just saved
+            //    and ignores the ones sent here, so these are for the stored pricing record.
             const pricingRes = await apiFetch(`/jobs/${jobId}/pricing`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    parts_total: partsTotal, labour_total: 0,
-                    taxable_amount: taxable, vat_amount: vatAmount,
-                    grand_total: grandTotal, vat_percent: 5,
-                    discount: 0, service_charge: serviceChargeValue, labour_rate: 0,
+                    labour_rate: Number(rates[labor[0].id]) || 0,
+                    service_charge: serviceCharge,
+                    discount: 0,
+                    vat_percent: VAT_PERCENT,
+                    parts_total: partsTotal,
+                    labour_total: labourTotal,
+                    taxable_amount: taxable,
+                    vat_amount: vatAmount,
+                    grand_total: grandTotal,
                 }),
             });
-            if (!pricingRes.ok) throw new Error("Failed to save pricing");
+            if (!pricingRes.ok) throw new Error(await readApiError(pricingRes, "Failed to save pricing"));
 
+            // 3. Approve.
             const statusRes = await apiFetch(`/jobs/${jobId}/status`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ status: "APPROVED" }),
             });
-            if (!statusRes.ok) {
-                const err = await statusRes.json();
-                throw new Error(err.message || "Failed to approve");
-            }
+            if (!statusRes.ok) throw new Error(await readApiError(statusRes, "Failed to approve"));
 
             setApproved(true);
             toast.success("Prices saved and job approved!");
@@ -214,8 +353,6 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             </div>
         );
     }
-
-    const grandTotal = parts.reduce((s, p) => s + Number(p.quantity) * (Number(prices[p.id]) || 0), 0) * 1.05;
 
     return (
         <div className="max-w-3xl mx-auto space-y-6">
@@ -283,6 +420,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                                         <td className="px-6 py-4">
                                             <input
                                                 type="number"
+                                                inputMode="decimal"
                                                 min="0"
                                                 step="0.01"
                                                 placeholder="Enter price"
@@ -306,24 +444,111 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                             <tr>
                                 <td colSpan={3} className="px-6 py-3 text-right">Parts Total:</td>
                                 <td className="px-6 py-3 text-right">
-                                    AED {(grandTotal / 1.05).toFixed(2)}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td colSpan={3} className="px-6 py-3 text-right">VAT (5%):</td>
-                                <td className="px-6 py-3 text-right">
-                                    AED {(grandTotal - grandTotal / 1.05).toFixed(2)}
-                                </td>
-                            </tr>
-                            <tr className="text-base">
-                                <td colSpan={3} className="px-6 py-3 text-right font-extrabold text-slate-900">Grand Total:</td>
-                                <td className="px-6 py-3 text-right font-extrabold text-slate-900">
-                                    AED {grandTotal.toFixed(2)}
+                                    AED {partsTotal.toFixed(2)}
                                 </td>
                             </tr>
                         </tfoot>
                     </table>
                 )}
+            </div>
+
+            {/* Labour Table — rates are zeroed on submission, so the manager sets them here */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+                    <Wrench size={18} className="text-slate-500" />
+                    <h3 className="font-bold text-slate-700">Labour</h3>
+                </div>
+
+                {labor.length === 0 ? (
+                    <div className="py-14 text-center text-slate-400">
+                        <Wrench size={36} className="mx-auto mb-3 opacity-30" />
+                        <p className="font-medium">No labour lines were added by the engineer.</p>
+                        <p className="text-sm mt-1">At least one is required before this job can be approved.</p>
+                    </div>
+                ) : (
+                    <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500 font-bold">
+                            <tr>
+                                <th className="px-6 py-3 text-left">Description</th>
+                                <th className="px-6 py-3 text-center w-20">Hours</th>
+                                <th className="px-6 py-3 text-left w-44">Rate / Hour (AED)</th>
+                                <th className="px-6 py-3 text-right w-32">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {labor.map(row => {
+                                const rate    = Number(rates[row.id]) || 0;
+                                const total   = (Number(row.hours) || 0) * rate;
+                                const missing = !(rate > 0);
+                                return (
+                                    <tr key={row.id} className="hover:bg-slate-50/60 transition-colors">
+                                        <td className="px-6 py-4 font-semibold text-slate-800">{row.description}</td>
+                                        <td className="px-6 py-4 text-center text-slate-600">{row.hours}</td>
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="number"
+                                                inputMode="decimal"
+                                                min="0"
+                                                step="0.01"
+                                                placeholder="Enter rate"
+                                                value={rates[row.id] ?? ""}
+                                                onChange={e => setRate(row.id, e.target.value)}
+                                                className={`w-full h-10 px-3 rounded-xl border-2 text-sm font-bold outline-none transition-all
+                                                    ${missing
+                                                        ? 'border-amber-400 bg-amber-50 placeholder:text-amber-400 focus:border-amber-500'
+                                                        : 'border-emerald-400 bg-emerald-50 text-emerald-800 focus:border-emerald-500'
+                                                    }`}
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-bold text-slate-800">
+                                            AED {total.toFixed(2)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                        <tfoot className="bg-slate-50 font-bold text-slate-700 text-sm">
+                            <tr>
+                                <td colSpan={3} className="px-6 py-3 text-right">Labour Total:</td>
+                                <td className="px-6 py-3 text-right">
+                                    AED {labourTotal.toFixed(2)}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                )}
+            </div>
+
+            {/* Totals — same formula the server applies when it stores the pricing record */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <table className="w-full text-sm">
+                    <tbody className="divide-y divide-slate-100 text-slate-700 font-semibold">
+                        <tr>
+                            <td className="px-6 py-3">Parts</td>
+                            <td className="px-6 py-3 text-right">AED {partsTotal.toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td className="px-6 py-3">Labour</td>
+                            <td className="px-6 py-3 text-right">AED {labourTotal.toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td className="px-6 py-3">Service Charge</td>
+                            <td className="px-6 py-3 text-right">AED {serviceCharge.toFixed(2)}</td>
+                        </tr>
+                        <tr>
+                            <td className="px-6 py-3">VAT ({VAT_PERCENT}%)</td>
+                            <td className="px-6 py-3 text-right">AED {vatAmount.toFixed(2)}</td>
+                        </tr>
+                    </tbody>
+                    <tfoot className="bg-slate-50">
+                        <tr className="text-base">
+                            <td className="px-6 py-4 font-extrabold text-slate-900">Grand Total</td>
+                            <td className="px-6 py-4 text-right font-extrabold text-slate-900">
+                                AED {grandTotal.toFixed(2)}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
 
             {/* Action Buttons */}

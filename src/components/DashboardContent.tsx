@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { isApproved, isAwaitingApproval, isSubmitted } from "@/lib/jobStatus";
 import { CheckCircle2, Clock, FileText, Download, FileSpreadsheet } from "lucide-react";
 import { Badge } from "./ui/badge";
 import JobCardForm from "./jobcard/JobCardForm";
@@ -104,15 +105,9 @@ const DashboardContent = ({}: DashboardContentProps) => {
         : jobs;
 
     const totalJobs = visibleJobs.length;
-    const submittedCount = visibleJobs.filter(j => {
-        const s = (j.status ?? "").toUpperCase();
-        return s === "WAITING_PRICING" || s.includes("SUBMIT");
-    }).length;
-    const approvedCount = visibleJobs.filter(j => (j.status ?? "").toUpperCase().includes("APPROV")).length;
-    const pendingCount = visibleJobs.filter(j => {
-        const s = (j.status ?? "").toUpperCase();
-        return s.includes("REVIEW") || s.includes("PEND");
-    }).length;
+    const submittedCount = visibleJobs.filter(j => isSubmitted(j.status)).length;
+    const approvedCount = visibleJobs.filter(j => isApproved(j.status)).length;
+    const pendingCount = visibleJobs.filter(j => isAwaitingApproval(j.status)).length;
 
     const downloadGlobalPDF = async () => {
         try {
