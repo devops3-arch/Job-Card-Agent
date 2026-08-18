@@ -12,7 +12,9 @@ const getUser = () => {
     try {
         const raw = localStorage.getItem("user");
         if (raw) return JSON.parse(raw);
-    } catch {}
+    } catch {
+        // A corrupt user blob is indistinguishable from being signed out.
+    }
     return null;
 };
 

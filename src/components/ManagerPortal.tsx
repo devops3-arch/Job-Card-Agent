@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ApiJob } from "@/types/jobCard";
 import { apiFetch } from "@/lib/api";
 import { isApproved, isOpen } from "@/lib/jobStatus";
 import { CheckCircle2, Clock, FileText, Activity, AlertTriangle } from "lucide-react";
@@ -36,8 +37,8 @@ const getStatusBadge = (status: string) => {
 // exists so a hung request eventually surfaces an error instead of spinning.
 const JOBS_REQUEST_TIMEOUT_MS = 15000;
 
-const jobDateValue = (job: any) => new Date(job.job_date || job.date || 0).getTime();
-const byJobDateDesc = (a: any, b: any) => jobDateValue(b) - jobDateValue(a);
+const jobDateValue = (job: ApiJob) => new Date(job.job_date || job.date || 0).getTime();
+const byJobDateDesc = (a: ApiJob, b: ApiJob) => jobDateValue(b) - jobDateValue(a);
 
 const readCachedJobs = () => {
     try {
@@ -49,18 +50,18 @@ const readCachedJobs = () => {
 };
 
 const ManagerPortal = () => {
-    const [jobs, setJobs] = useState<any[]>([]);
+    const [jobs, setJobs] = useState<ApiJob[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [selectedJob, setSelectedJob] = useState<any>(null);
+    const [selectedJob, setSelectedJob] = useState<ApiJob | null>(null);
     const user = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
     const userId = user?.id;
     const userName = user?.name || user?.fullName || "";
 
     const isPending = (s: string) => isOpen(s);
 
-    const isAssignedJob = (job: any) => {
+    const isAssignedJob = (job: ApiJob) => {
         return String(job.manager_id) === String(userId) || String(job.manager_name) === String(userName) || String(job.managerName) === String(userName);
     };
 
@@ -197,7 +198,7 @@ const ManagerPortal = () => {
         });
     };
 
-    const handleReviewJob = (job: any) => {
+    const handleReviewJob = (job: ApiJob) => {
         setSelectedJob(job);
         setIsFormOpen(true);
     };

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ApiErrorDetail } from "@/types/jobCard";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -21,14 +22,14 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
 // Safely extract a readable string from any backend error shape.
-function normalizeAuthError(data: any): string {
+function normalizeAuthError(data: unknown): string {
   const err = data?.error;
   if (typeof err === "string") return err;
   if (typeof data?.message === "string") return data.message;
   if (typeof err?.message === "string") return err.message;
   if (typeof err?.code === "string") return err.code;
   if (Array.isArray(err?.details))
-    return err.details.map((d: any) => d?.message || String(d)).join(", ");
+    return err.details.map((d: ApiErrorDetail) => d?.message || String(d)).join(", ");
   if (typeof err?.details === "string") return err.details;
   return "Authentication failed";
 }

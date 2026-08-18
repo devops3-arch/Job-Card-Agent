@@ -56,8 +56,8 @@ const ProfileSettings = () => {
                 department: data.data.department,
             }));
             toast.success("Profile updated successfully");
-        } catch (err: any) {
-            toast.error(err.message || "Failed to update profile");
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Failed to update profile");
         } finally {
             setSaving(false);
         }

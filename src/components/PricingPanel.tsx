@@ -5,7 +5,7 @@ import { Loader2, CheckCircle2, Package, Wrench, FileText, FileSpreadsheet, Penc
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
 import { SERVICE_CHARGE_MAP } from "@/types/jobCard";
-import type { JobCardData } from "@/types/jobCard";
+import type { JobCardData, ApiJob, ApiErrorDetail, ServiceType } from "@/types/jobCard";
 
 interface Part {
     id: number;
@@ -31,7 +31,7 @@ interface Props {
 }
 
 const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
-    const [job, setJob]         = useState<any>(null);
+    const [job, setJob]         = useState<ApiJob | null>(null);
     const [parts, setParts]     = useState<Part[]>([]);
     const [labor, setLabor]     = useState<Labor[]>([]);
     const [prices, setPrices]   = useState<Record<number, string>>({});
@@ -76,7 +76,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
     };
 
     // job_data is JSONB but can arrive as a string depending on the driver.
-    const storedJson: any = (() => {
+    const storedJson: Record<string, unknown> = (() => {
         try {
             return (typeof job?.job_data === "string" ? JSON.parse(job.job_data) : job?.job_data) || {};
         } catch {
@@ -108,7 +108,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             const payload = await res.json();
             const message = payload?.error?.message || payload?.message || fallback;
             const details = (Array.isArray(payload?.error?.details) ? payload.error.details : [])
-                .map((d: any) => {
+                .map((d: ApiErrorDetail) => {
                     const key = String(d?.field ?? d?.path ?? "").trim();
                     const text = String(d?.message ?? "").trim();
                     return key ? `${key}: ${text}`.trim() : text;
@@ -144,7 +144,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                 equipmentSerialNo: job?.equipment_serial_no || storedJson.equipment_serial_no || "",
                 equipmentYear: job?.equipment_year || storedJson.equipment_year || "",
             },
-            serviceType:         (job?.service_type || "service_contract") as any,
+            serviceType:         (job?.service_type || "service_contract") as ServiceType,
             breakdownCallType:   job?.service_type === "breakdown_call" ? (storedJson.breakdown_call_type || storedJson.coverage_type) : undefined,
             compressorChecklist,
             dryerChecklist,
@@ -180,7 +180,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
     // PUT /jobs/:id validates a flat snake_case body against a strict schema, so every
     // key here must exist in jobUpdateSchema and every mandatory field must be present.
     const buildUpdatePayload = () => {
-        const payload: Record<string, any> = {
+        const payload: Record<string, unknown> = {
             customer_name:               job?.customer_name ?? "",
             ref_no:                      job?.ref_no ?? "",
             job_card_no:                 job?.job_card_no ?? "",
@@ -254,10 +254,10 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
         if (!String(storedJson.engineer_name ?? "").trim()) {
             return "This job has no engineer name recorded, which the server requires. Ask the engineer to resubmit it.";
         }
-        const checklistComplete = (items: any) =>
+        const checklistComplete = (items: unknown) =>
             Array.isArray(items) &&
             items.length > 0 &&
-            items.every((item: any) => ["done", "na", "pending"].includes(String(item?.status ?? "").trim().toLowerCase()));
+            items.every((item) => ["done", "na", "pending"].includes(String((item as { status?: unknown })?.status ?? "").trim().toLowerCase()));
         if (!checklistComplete(storedJson.compressor_checklist) || !checklistComplete(storedJson.dryer_checklist)) {
             return "The compressor and dryer checklists are incomplete. The engineer must finish them before approval.";
         }
@@ -311,8 +311,8 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             setApproved(true);
             toast.success("Prices saved and job approved!");
             window.dispatchEvent(new Event('jobsUpdated'));
-        } catch (err: any) {
-            toast.error(err.message || "Something went wrong");
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Something went wrong");
         } finally {
             setSaving(false);
         }
@@ -327,9 +327,9 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             console.log("PDF data:", data);
             await generatePDF(data);
             toast.success("PDF downloaded!");
-        } catch (err: any) {
+        } catch (err) {
             console.error("PDF generation error:", err);
-            toast.error(`Failed to generate PDF: ${err?.message || "unknown error"}`);
+            toast.error(`Failed to generate PDF: ${err instanceof Error ? err.message : "unknown error"}`);
         }
     };
 
@@ -339,9 +339,9 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
             console.log("Excel data:", data);
             generateExcel(data);
             toast.success("Excel downloaded!");
-        } catch (err: any) {
+        } catch (err) {
             console.error("Excel generation error:", err);
-            toast.error(`Failed to generate Excel: ${err?.message || "unknown error"}`);
+            toast.error(`Failed to generate Excel: ${err instanceof Error ? err.message : "unknown error"}`);
         }
     };
 

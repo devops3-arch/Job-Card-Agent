@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, type ReactNode } from "react";
+import type { ApiJob, ApiPart, ApiLabor, ApiErrorDetail } from "@/types/jobCard";
 import type { Dispatch, SetStateAction } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,7 +28,7 @@ interface UserOption {
 }
 
 // Safely extract a readable string from any backend error shape.
-function normalizeApiError(data: any): string {
+function normalizeApiError(data: unknown): string {
   const err = data?.error;
   if (typeof err === "string") return err;
   if (typeof data?.message === "string") return data.message;
@@ -35,13 +36,13 @@ function normalizeApiError(data: any): string {
   if (typeof err?.code === "string") return err.code;
   if (typeof err?.details === "string") return err.details;
   if (Array.isArray(err?.details)) {
-    return err.details.map((d: any) => d?.message || String(d)).join(", ");
+    return err.details.map((d: ApiErrorDetail) => d?.message || String(d)).join(", ");
   }
   return "Failed to save job";
 }
 
 // Strip undefined values so JSON.stringify doesn't produce nulls for missing fields.
-function removeUndefined(obj: Record<string, any>): Record<string, any> {
+function removeUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(obj).filter(([_, v]) => v !== undefined)
   );
@@ -229,7 +230,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               }
 
               if (data.data.parts && data.data.parts.length > 0) {
-                 setParts(data.data.parts.map((p: any) => ({
+                 setParts(data.data.parts.map((p: ApiPart) => ({
                     id: String(p.id),
                     description: p.part_name,
                     partNumber: p.part_number || "",
@@ -238,7 +239,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
                     totalPrice: Number(p.total) || 0,
                  })));
               } else if (storedJson.parts) {
-                 setParts(storedJson.parts.map((p: any) => ({
+                 setParts(storedJson.parts.map((p: Record<string, unknown>) => ({
                     ...p,
                     qty: Number(p.qty) || 0,
                     unitPrice: Number(p.unitPrice) || 0,
@@ -247,7 +248,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
               }
 
               if (data.data.labor && data.data.labor.length > 0) {
-                 setLabor(data.data.labor.map((l: any) => ({
+                 setLabor(data.data.labor.map((l: ApiLabor) => ({
                     id: String(l.id),
                     description: l.description,
                     hours: Number(l.hours) || 0,
@@ -255,7 +256,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
                     totalCost: Number(l.total) || 0,
                  })));
               } else if (storedJson.labor) {
-                 setLabor(storedJson.labor.map((l: any) => ({
+                 setLabor(storedJson.labor.map((l: Record<string, unknown>) => ({
                     ...l,
                     hours: Number(l.hours) || 0,
                     ratePerHour: Number(l.ratePerHour) || 0,
@@ -281,7 +282,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         // Fallback to local mockJobs if API failed or no job found
         try {
           const jobs = JSON.parse(localStorage.getItem('mockJobs') || '[]');
-          const existingJob = jobs.find((j: any) => String(j.id) === String(jobId));
+          const existingJob = jobs.find((j: ApiJob) => String(j.id) === String(jobId));
           if (existingJob) {
             if (existingJob.customerInfo) setCustomerInfo(existingJob.customerInfo);
             else setCustomerInfo(prev => ({ 
@@ -314,6 +315,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
 
       fetchJobData();
     }
+    // Intentionally keyed on jobId alone. `findings` and `evidence` are read while
+    // merging the fetched record; including them would refetch the job on every
+    // keystroke in those fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
   useEffect(() => {
@@ -341,7 +346,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           throw new Error(data?.error?.message || data?.message || "Failed to load selection list");
         }
         const items = Array.isArray(data.data) ? data.data : [];
-        const normalized = items.map((item: any) => ({
+        const normalized = items.map((item: Record<string, unknown>) => ({
           id: Number(item?.id ?? item?.user_id ?? 0),
           name: String(item?.name ?? item?.full_name ?? item?.username ?? item?.email ?? item?.label ?? item?.title ?? "").trim(),
         })).filter((item: UserOption) => item.id > 0 && item.name);
@@ -357,6 +362,9 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
 
     fetchList("/users/managers", setManagers, setLoadingManagers, setManagersError);
     fetchList("/users/engineers", setEngineers, setLoadingEngineers, setEngineersError);
+    // Mount-only by design: the manager and engineer lists do not change while the
+    // form is open, and the current-user values are read once from localStorage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

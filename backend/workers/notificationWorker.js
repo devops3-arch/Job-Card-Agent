@@ -4,8 +4,9 @@ import { deliverNotificationEmail, isEmailable } from "../services/email/notific
 
 /**
  * Notification Worker
- * Processes individual notification queue items
- * Simulates external service integrations (email, SMS, webhooks, etc.)
+ * Processes individual notification queue items.
+ * Job lifecycle events are delivered by email when SMTP is configured; security
+ * and audit events are recorded without a delivery channel by design.
  */
 
 const log = (message, extra = {}) => {
@@ -22,19 +23,17 @@ const errorLog = (message, error, extra = {}) => {
 };
 
 /**
- * Simulates processing a notification
- * In production, this would integrate with external services:
- * - Email services (SendGrid, SES)
- * - SMS/WhatsApp services (Twilio, WhatsApp Business API)
- * - Webhook dispatch
- * - n8n workflows
- * - Azure Service Bus
- * - etc.
+ * Delivers a single notification.
+ *
+ * Job lifecycle notifications are emailed when SMTP is configured. Security and
+ * audit events (login, logout, token refresh, general activity) are deliberately
+ * never emailed — they exist for the audit trail, and an email per login would be
+ * noise. Those are recorded and acknowledged.
  *
  * @param {Object} notification - Notification record with event data
- * @returns {Promise<boolean>} - True if successful, false if failed
+ * @returns {Promise<boolean>} true when handled, false to leave it for a retry
  */
-const simulateNotificationProcessing = async (notification) => {
+const deliverNotification = async (notification) => {
   const {
     id: notificationId,
     notification_type,
@@ -43,7 +42,6 @@ const simulateNotificationProcessing = async (notification) => {
     event_type,
     entity_type,
     entity_id,
-    payload,
   } = notification;
 
   log("Processing notification", {
@@ -56,186 +54,44 @@ const simulateNotificationProcessing = async (notification) => {
     entityId: entity_id,
   });
 
-  try {
-    // Real delivery first. Job lifecycle notifications go out as email when SMTP is
-    // configured; a send failure returns false so the queue retries it. Everything
-    // else — and every notification on an unconfigured deployment — falls through to
-    // the logged simulation below, which is the behaviour this worker always had.
-    if (isEmailable(notification_type)) {
-      const delivery = await deliverNotificationEmail(notification);
-
-      if (delivery.error) {
-        errorLog("Notification email failed", new Error(delivery.error), {
-          notificationId,
-          notificationType: notification_type,
-        });
-        return false;
-      }
-
-      if (delivery.sent) {
-        log("Notification emailed", {
-          notificationId,
-          notificationType: notification_type,
-          recipients: delivery.recipients,
-        });
-        return true;
-      }
-    }
-
-    // Simulate different processing times and potential failures
-    // In production, replace with actual service integrations
-
-    switch (notification_type) {
-      case "JOB_APPROVAL_NEEDED":
-        // Simulate sending approval notification to manager
-        await simulateExternalServiceCall("approval_notification", {
-          recipientRole: recipient_role,
-          jobId: entity_id,
-          payload,
-        });
-        break;
-
-      case "JOB_APPROVED":
-        // Simulate sending approval confirmation
-        await simulateExternalServiceCall("job_approved_notification", {
-          recipientUserId: recipient_user_id,
-          jobId: entity_id,
-          payload,
-        });
-        break;
-
-      case "JOB_CLOSED":
-        // Simulate sending job closure notification
-        await simulateExternalServiceCall("job_closed_notification", {
-          recipientUserId: recipient_user_id,
-          jobId: entity_id,
-          payload,
-        });
-        break;
-
-      case "PRICING_SUBMITTED":
-        // Simulate sending pricing submission notification
-        await simulateExternalServiceCall("pricing_submitted_notification", {
-          recipientRole: recipient_role,
-          jobId: entity_id,
-          payload,
-        });
-        break;
-
-      case "SIGNATURE_UPLOADED":
-        // Simulate sending signature upload notification
-        await simulateExternalServiceCall("signature_uploaded_notification", {
-          recipientUserId: recipient_user_id,
-          jobId: entity_id,
-          payload,
-        });
-        break;
-
-      case "USER_LOGIN":
-      case "USER_LOGOUT":
-      case "TOKEN_REFRESH":
-      case "USER_ACTIVITY":
-        // Security/audit notifications - lower priority
-        await simulateExternalServiceCall("security_notification", {
-          notificationType: notification_type,
-          recipientUserId: recipient_user_id,
-          payload,
-        });
-        break;
-
-      default:
-        // Unknown notification type - log and succeed
-        log("Unknown notification type processed", {
-          notificationId,
-          notificationType: notification_type,
-        });
-    }
-
+  if (!isEmailable(notification_type)) {
+    // Audit-only by design. Acknowledged so it leaves the queue rather than
+    // retrying forever against a channel it was never meant to use.
+    log("Notification recorded for audit only, no delivery channel applies", {
+      notificationId,
+      notificationType: notification_type,
+    });
     return true;
-  } catch (error) {
-    errorLog("Notification processing failed", error, {
+  }
+
+  const delivery = await deliverNotificationEmail(notification);
+
+  if (delivery.error) {
+    errorLog("Notification email failed", new Error(delivery.error), {
       notificationId,
       notificationType: notification_type,
     });
     return false;
   }
-};
 
-/**
- * Simulates external service calls
- * In production, replace with actual API calls to:
- * - Email services
- * - SMS providers
- * - Webhook endpoints
- * - Message queues
- * - etc.
- *
- * @param {string} serviceType - Type of service being called
- * @param {Object} data - Data to send to the service
- */
-const simulateExternalServiceCall = async (serviceType, data) => {
-  // Simulate network delay and potential failures
-  const delay = Math.random() * 1000 + 500; // 500-1500ms
-  await new Promise(resolve => setTimeout(resolve, delay));
-
-  // Simulate occasional failures (5% failure rate)
-  if (Math.random() < 0.05) {
-    throw new Error(`Simulated ${serviceType} service failure`);
+  if (delivery.sent) {
+    log("Notification emailed", {
+      notificationId,
+      notificationType: notification_type,
+      recipients: delivery.recipients,
+    });
+    return true;
   }
 
-  // Simulate service-specific processing
-  switch (serviceType) {
-    case "approval_notification":
-      log("Approval notification sent to manager", {
-        serviceType,
-        recipientRole: data.recipientRole,
-        jobId: data.jobId,
-      });
-      break;
-
-    case "job_approved_notification":
-      log("Job approval confirmation sent", {
-        serviceType,
-        recipientUserId: data.recipientUserId,
-        jobId: data.jobId,
-      });
-      break;
-
-    case "job_closed_notification":
-      log("Job closure notification sent", {
-        serviceType,
-        recipientUserId: data.recipientUserId,
-        jobId: data.jobId,
-      });
-      break;
-
-    case "pricing_submitted_notification":
-      log("Pricing submission notification sent", {
-        serviceType,
-        recipientRole: data.recipientRole,
-        jobId: data.jobId,
-      });
-      break;
-
-    case "signature_uploaded_notification":
-      log("Signature upload notification sent", {
-        serviceType,
-        recipientUserId: data.recipientUserId,
-        jobId: data.jobId,
-      });
-      break;
-
-    case "security_notification":
-      log("Security notification sent", {
-        serviceType,
-        notificationType: data.notificationType,
-        recipientUserId: data.recipientUserId,
-      });
-      break;
-
-    default:
-      log("Generic service call completed", { serviceType });
-  }
+  // Nothing was sent, and saying otherwise in the log would be a lie. This is the
+  // normal state on a deployment with no SMTP_HOST, or when the recipient role has
+  // no active users to address.
+  log("Notification not delivered: no email channel configured or no recipients", {
+    notificationId,
+    notificationType: notification_type,
+    recipients: delivery.recipients ?? 0,
+  });
+  return true;
 };
 
 /**
@@ -251,14 +107,13 @@ export const processNotification = async (notification, maxRetries = 5) => {
   try {
     log("Starting notification processing", { notificationId });
 
-    // Simulate the actual processing
-    const success = await simulateNotificationProcessing(notification);
+    const success = await deliverNotification(notification);
 
     if (success) {
       await markNotificationSent(notificationId);
       log("Notification processed successfully", { notificationId });
     } else {
-      await markNotificationFailed(notificationId, "Processing simulation failed", maxRetries);
+      await markNotificationFailed(notificationId, "Delivery failed", maxRetries);
       log("Notification processing failed", { notificationId });
     }
   } catch (error) {

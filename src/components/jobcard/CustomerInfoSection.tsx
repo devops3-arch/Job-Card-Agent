@@ -255,7 +255,7 @@ const CustomerInfoSection = ({
                     className={`pl-10 ${inputClass}`}
                     type={f.inputType || "text"}
                     placeholder={f.placeholder}
-                    value={(data as any)[f.field!] || ""}
+                    value={(data as unknown as Record<string, string>)[f.field!] || ""}
                     onChange={(e) => update(f.field as keyof CustomerInfo, e.target.value)}
                   />
                 </div>
@@ -263,7 +263,7 @@ const CustomerInfoSection = ({
                 <Input
                   className={inputClass}
                   placeholder={f.placeholder}
-                  value={(data as any)[f.field!] || ""}
+                  value={(data as unknown as Record<string, string>)[f.field!] || ""}
                   onChange={(e) => update(f.field as keyof CustomerInfo, e.target.value)}
                 />
               )}

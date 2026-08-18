@@ -24,6 +24,11 @@ export const EMAILABLE = {
     subject: (job) => `Job card ${job.reference} approved`,
     body: (job) => `Your job card has been approved.\n\n${job.summary}\n\nOpen it here: ${APP_URL()}\n`,
   },
+  SIGNATURE_UPLOADED: {
+    subject: (job) => `Signature added to job card ${job.reference}`,
+    body: (job) =>
+      `A signature has been added to this job card.\n\n${job.summary}\n\nOpen it here: ${APP_URL()}\n`,
+  },
   JOB_CLOSED: {
     subject: (job) => `Job card ${job.reference} closed`,
     body: (job) => `Your job card has been closed.\n\n${job.summary}\n\nOpen it here: ${APP_URL()}\n`,

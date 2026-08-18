@@ -10,6 +10,7 @@ describe('which notifications become emails', () => {
     expect(isEmailable('PRICING_SUBMITTED')).toBe(true);
     expect(isEmailable('JOB_APPROVED')).toBe(true);
     expect(isEmailable('JOB_CLOSED')).toBe(true);
+    expect(isEmailable('SIGNATURE_UPLOADED')).toBe(true);
   });
 
   test('security and audit events are not emailed', () => {
@@ -39,6 +40,12 @@ describe('message content', () => {
       expect(body).toContain('Gulf Cement Works');
       expect(body).toContain('http');
     }
+  });
+
+  test('all five lifecycle events have a template', () => {
+    expect(Object.keys(EMAILABLE).sort()).toEqual([
+      'JOB_APPROVAL_NEEDED', 'JOB_APPROVED', 'JOB_CLOSED', 'PRICING_SUBMITTED', 'SIGNATURE_UPLOADED',
+    ]);
   });
 
   test('the approval request says what is being asked for', () => {

@@ -100,7 +100,7 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
             return (
               <motion.div key={field.field} custom={index} variants={fieldVariants} initial="hidden" animate="visible" className="relative">
                 <label className="field-label">{field.label}</label>
-                <Input className={inputClass} placeholder={field.placeholder} value={(data as any)[field.field] || ""} onChange={(event) => handleBrandDescriptionChange(event.target.value)} onFocus={() => (data as any)[field.field] && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 100)} />
+                <Input className={inputClass} placeholder={field.placeholder} value={(data as unknown as Record<string, string>)[field.field] || ""} onChange={(event) => handleBrandDescriptionChange(event.target.value)} onFocus={() => (data as unknown as Record<string, string>)[field.field] && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 100)} />
                 {showSuggestions && equipmentSuggestions.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border rounded-lg shadow-lg max-h-96 overflow-y-auto z-10">
                     {equipmentSuggestions.map((eq, idx) => (
@@ -132,7 +132,7 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
                 inputMode={field.inputType === "number" ? "numeric" : undefined}
                 min={field.inputType === "number" ? 0 : undefined}
                 step={field.field === "meterReading" || field.field === "lastServiceHours" ? 1 : undefined}
-                value={(data as any)[field.field] || ""}
+                value={(data as unknown as Record<string, string>)[field.field] || ""}
                 onChange={(event) => update(field.field as keyof CustomerInfo, event.target.value)}
               />
             </motion.div>

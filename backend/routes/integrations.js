@@ -1,6 +1,7 @@
 import express from "express";
 
 import { isConfigured as isEmailConfigured } from "../services/email/emailService.js";
+import { isConfigured as isZohoConfigured } from "../services/zoho/index.js";
 
 const router = express.Router();
 
@@ -13,7 +14,6 @@ const router = express.Router();
  *
  *   configured      — credentials present, calls will be attempted
  *   not_configured  — implemented, but missing the key or URL it needs
- *   not_implemented — no working client exists yet
  */
 router.get("/status", (req, res) => {
   const data = {
@@ -27,7 +27,7 @@ router.get("/status", (req, res) => {
       ? (process.env.AZURE_STORAGE_CONNECTION_STRING ? "configured" : "not_configured")
       : "local",
     workers: process.env.WORKER_ENABLED === "true" ? "enabled" : "disabled",
-    zoho: "not_implemented",
+    zoho: isZohoConfigured() ? "configured" : "not_configured",
   };
 
   const degraded = Object.entries(data)

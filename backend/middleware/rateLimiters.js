@@ -6,9 +6,9 @@ import logger from "../services/logger/logger.js";
 // as a keyGenerator itself. Passing it directly means it receives (req, res) and
 // never produces a usable key, which silently disables the limiter it is attached
 // to — that is why login had no working brute-force protection.
-const ipKey = (req) => ipKeyGenerator(req.ip || "unknown");
+export const ipKey = (req) => ipKeyGenerator(req.ip || "unknown");
 
-const buildKey = (req) => {
+export const buildKey = (req) => {
   if (req.user?.id) {
     return `user:${req.user.id}`;
   }
@@ -32,7 +32,7 @@ const createRateLimitHandler = (message, logTag) => (req, res) => {
 // app's own bundle and the evidence photos it renders would exhaust the window in
 // a couple of page loads and make the app look broken. The per-route limiters
 // below (auth, admin, upload) are what actually guard against abuse.
-const isStaticAssetRequest = (req) =>
+export const isStaticAssetRequest = (req) =>
   req.method === "GET" &&
   (req.path.startsWith("/assets/") ||
     req.path.startsWith("/uploads/") ||

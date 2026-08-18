@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import type { ApiJob } from "@/types/jobCard";
 import { Clock } from "lucide-react";
 
 const getStatusBadge = (status: string) => {
@@ -15,7 +16,7 @@ const getStatusBadge = (status: string) => {
     return <Badge variant="outline" className="rounded-full shadow-sm">{status || "Draft"}</Badge>;
 };
 
-export const MobileJobCard = ({ job, index, onApprove }: { job: any, index: number, onApprove?: (jobId: string) => void }) => (
+export const MobileJobCard = ({ job, index, onApprove }: { job: ApiJob, index: number, onApprove?: (jobId: string) => void }) => (
     <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-sm mb-3">
         <div className="flex justify-between items-start mb-2">
             <div>

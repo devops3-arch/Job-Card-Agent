@@ -100,3 +100,67 @@ export interface JobCardData {
   engineerId?: number;
   serviceCharge?: number;
 }
+
+/**
+ * A job row as the API returns it — snake_case, straight from job_master, with
+ * job_data carrying the free-form JSON the form stores. Distinct from JobCardData
+ * above, which is the camelCase shape the PDF and Excel exporters consume.
+ *
+ * Fields are optional because the API selects different column sets per route.
+ */
+export interface ApiJob {
+  id: number;
+  status?: string;
+  customer_name?: string;
+  ref_no?: string;
+  job_card_no?: string;
+  job_date?: string;
+  customer_code?: string;
+  attention_of?: string;
+  email?: string;
+  contact_no?: string;
+  sales_area?: string;
+  service_type?: string;
+  equipment_name?: string;
+  equipment_model?: string;
+  equipment_brand_description?: string;
+  equipment_part_no?: string;
+  equipment_serial_no?: string;
+  equipment_year?: string;
+  other_expenses?: number | string;
+  discount_percentage?: number | string;
+  engineer_id?: number | null;
+  manager_id?: number | null;
+  engineer_name?: string;
+  manager_name?: string;
+  /** JSONB; arrives as an object, or as a string depending on the driver. */
+  job_data?: Record<string, unknown> | string | null;
+  [key: string]: unknown;
+}
+
+/** A job_parts row as the API returns it. */
+export interface ApiPart {
+  id: number;
+  part_name: string;
+  part_number?: string | null;
+  quantity: number;
+  unit_price: number;
+  total: number;
+}
+
+/** A job_labor row as the API returns it. */
+export interface ApiLabor {
+  id: number;
+  description: string;
+  hours: number;
+  rate: number;
+  total: number;
+}
+
+/** One entry from an API error's details array. Schema failures key by `path`, thrown AppErrors by `field`. */
+export interface ApiErrorDetail {
+  field?: string;
+  path?: string;
+  message?: string;
+  code?: string;
+}

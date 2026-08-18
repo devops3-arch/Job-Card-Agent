@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { ApiJob } from "@/types/jobCard";
 import { apiFetch } from "@/lib/api";
 import { isApproved, isAwaitingApproval, isSubmitted } from "@/lib/jobStatus";
 import { CheckCircle2, Clock, FileText, Download, FileSpreadsheet } from "lucide-react";
@@ -35,20 +36,18 @@ const STAT_ANIMATION = {
     })
 };
 
-interface DashboardContentProps {}
-
-const DashboardContent = ({}: DashboardContentProps) => {
-    const [jobs, setJobs] = useState<any[]>([]);
+const DashboardContent = () => {
+    const [jobs, setJobs] = useState<ApiJob[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
-    const [selectedJob, setSelectedJob] = useState<any>(null);
+    const [selectedJob, setSelectedJob] = useState<ApiJob | null>(null);
     const isMobile = useIsMobile();
     const user = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
     const userRole = user?.role || '';
     const userId = user?.id;
     const userName = user?.name || user?.fullName || "";
 
-    const getManagerName = (job: any) => job.manager_name || job.managerName || job.job_data?.manager_name || "—";
-    const getEngineerName = (job: any) => job.engineer_name || job.engineerName || job.job_data?.engineer_name || "—";
+    const getManagerName = (job: ApiJob) => job.manager_name || job.managerName || job.job_data?.manager_name || "—";
+    const getEngineerName = (job: ApiJob) => job.engineer_name || job.engineerName || job.job_data?.engineer_name || "—";
 
     useEffect(() => {
         const fetchJobs = () => {
@@ -75,7 +74,7 @@ const DashboardContent = ({}: DashboardContentProps) => {
         return () => window.removeEventListener('jobsUpdated', listener);
     }, []);
 
-    const handleEdit = (job: any) => {
+    const handleEdit = (job: ApiJob) => {
         setSelectedJob(job);
         setIsFormOpen(true);
     };
