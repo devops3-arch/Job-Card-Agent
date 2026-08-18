@@ -35,11 +35,45 @@ steps:
   env:
     VITE_API_BASE_URL: ''
 
+# ── Test gate ────────────────────────────────────────────────────────────────
+# Runs before anything is packaged, so a failing test stops the deploy rather
+# than shipping. Covers pricing maths, status transitions, role boundaries and
+# the job card validation rules.
+- script: |
+    npm run test
+  displayName: 'Run Tests'
+
 # ── Backend install ──────────────────────────────────────────────────────────
 - script: |
     cd backend
     npm install --omit=dev
   displayName: 'Install Backend Production Dependencies'
+
+# ── Database migrations ──────────────────────────────────────────────────────
+# Applies pending migrations BEFORE the new code starts serving traffic. This
+# matters: the login query selects "AND is_active = true", a column created by
+# migration 014, so deploying ahead of the migration breaks every login.
+#
+# Skipped unless the PROD_DATABASE_URL secret variable is set on the pipeline,
+# so adding this step alone changes nothing until you opt in. Set it in
+# Pipelines → Edit → Variables, marked as secret.
+#
+# The runner is idempotent — it records applied files in schema_migrations and
+# skips them next time — so re-running is safe. A failure fails the build, which
+# is the point: no deploy on top of a half-migrated database.
+- script: |
+    if [ -z "$PROD_DATABASE_URL" ]; then
+      echo "PROD_DATABASE_URL is not set — skipping migrations."
+      echo "Migrations must then be applied by hand BEFORE this deploy reaches users."
+      exit 0
+    fi
+    cd backend
+    npm run migrate
+  displayName: 'Apply Database Migrations'
+  env:
+    PROD_DATABASE_URL: $(PROD_DATABASE_URL)
+    DATABASE_URL: $(PROD_DATABASE_URL)
+    PGSSLMODE: require
 
 # ── Clean stale Oryx manifest and verify structure ───────────────────────────
 - script: |
