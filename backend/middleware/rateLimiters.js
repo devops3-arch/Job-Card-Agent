@@ -48,12 +48,20 @@ export const globalLimiter = rateLimit({
   handler: createRateLimitHandler("Too many requests", "Rate limit triggered"),
 });
 
+// Keyed by IP *and* the email being attempted, so 10 failures against one account
+// cannot lock out everyone sharing an office NAT. Credential stuffing across many
+// accounts from one address is still bounded by globalLimiter.
+export const authKey = (req) => {
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  return email ? `${ipKey(req)}:${email}` : ipKey(req);
+};
+
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: ipKey,
+  keyGenerator: authKey,
   handler: createRateLimitHandler(
     "Too many login attempts. Please try again later.",
     "Auth limiter triggered"

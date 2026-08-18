@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 
-import { ipKey, buildKey, isStaticAssetRequest, globalLimiter, authLimiter } from './rateLimiters.js';
+import { ipKey, authKey, buildKey, isStaticAssetRequest, globalLimiter, authLimiter } from './rateLimiters.js';
 
 describe('ipKey — regression for the silently disabled limiter', () => {
   // express-rate-limit v8 exports ipKeyGenerator as a helper that takes an IP
@@ -75,6 +75,32 @@ describe('isStaticAssetRequest', () => {
 
   test('does not exempt a client-side route that merely contains a dot', () => {
     expect(get('/admin/users')).toBe(false);
+  });
+});
+
+describe('authKey — one account cannot lock out an office', () => {
+  test('separates attempts against different accounts from the same IP', () => {
+    const ip = '203.0.113.7';
+    const a = authKey({ ip, body: { email: 'arvind@example.com' } });
+    const b = authKey({ ip, body: { email: 'bijmon@example.com' } });
+
+    expect(a).not.toBe(b);
+  });
+
+  test('still separates the same account across different IPs', () => {
+    const body = { email: 'arvind@example.com' };
+    expect(authKey({ ip: '203.0.113.7', body })).not.toBe(authKey({ ip: '198.51.100.4', body }));
+  });
+
+  test('is case and whitespace insensitive, so casing cannot be used to get extra attempts', () => {
+    const ip = '203.0.113.7';
+    expect(authKey({ ip, body: { email: '  Arvind@Example.COM ' } }))
+      .toBe(authKey({ ip, body: { email: 'arvind@example.com' } }));
+  });
+
+  test('falls back to the IP when no email was supplied', () => {
+    expect(authKey({ ip: '203.0.113.7', body: {} })).toBe(ipKey({ ip: '203.0.113.7' }));
+    expect(authKey({ ip: '203.0.113.7' })).toBe(ipKey({ ip: '203.0.113.7' }));
   });
 });
 
