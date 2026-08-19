@@ -264,43 +264,49 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
       }
     }
 
-      // New format validation — advisory only, does not block approval
-      // TODO: set to blocking after full rollout
-      const advisory = [];
-      try {
-        if (job.safety_critical_issue === true && (!job.escalated_to || String(job.escalated_to).trim() === "")) {
-          advisory.push({ field: "escalated_to", message: "Safety critical issue found but escalation details are missing" });
-        }
+    // Job closure checks. These block approval.
+    //
+    // They were advisory for a reason worth recording: the columns they read are
+    // written by nothing but backend/utils/jobClosureFields.js, which did not
+    // exist. The form has always collected these answers, but it sends them
+    // inside the `evidence` object, so every check below read a NULL or a default
+    // false however carefully the engineer filled the section in. Blocking on
+    // that would have made approval impossible, so warning was the only safe
+    // behaviour available. Now that saving a job derives these columns from the
+    // evidence it stores, a correctly filled job card satisfies them and the
+    // checks can do their job.
+    //
+    // Deliberately not wrapped in a try/catch. If the approved-documents lookup
+    // fails we must not fall through to approving the job.
+    if (job.safety_critical_issue === true && (!job.escalated_to || String(job.escalated_to).trim() === "")) {
+      details.push({ field: "escalated_to", message: "Safety critical issue found but escalation details are missing" });
+    }
 
-        if (job.quotation_required === true) {
-          const approvedDocRes = await useClient.query(
-            `SELECT id FROM approved_documents WHERE job_id = $1 ORDER BY version DESC LIMIT 1`,
-            [jobId]
-          );
-          if (approvedDocRes.rows.length === 0) {
-            advisory.push({ field: "approved_documents", message: "Quotation is required but no approved document found" });
-          }
-        }
-
-        if (!job.final_test_run_result) {
-          advisory.push({ field: "final_test_run_result", message: "Final test run result must be recorded before approval" });
-        }
-
-        if (!job.final_equipment_status) {
-          advisory.push({ field: "final_equipment_status", message: "Final equipment status must be recorded before approval" });
-        }
-
-        if (job.internal_checklist_completed !== true) {
-          advisory.push({ field: "internal_checklist_completed", message: "Internal checklist must be marked as completed before approval" });
-        }
-
-        if (job.attachments_verified !== true) {
-          advisory.push({ field: "attachments_verified", message: "Mandatory attachments (photos, sound file, checklist) must be verified before approval" });
-        }
-      } catch (err) {
-        // Non-fatal advisory check failure
-        console.warn("Advisory approval checks failed:", err?.message || err);
+    if (job.quotation_required === true) {
+      const approvedDocRes = await useClient.query(
+        `SELECT id FROM approved_documents WHERE job_id = $1 ORDER BY version DESC LIMIT 1`,
+        [jobId]
+      );
+      if (approvedDocRes.rows.length === 0) {
+        details.push({ field: "approved_documents", message: "Quotation is required but no approved document found" });
       }
+    }
+
+    if (!job.final_test_run_result) {
+      details.push({ field: "final_test_run_result", message: "Final test run result must be recorded before approval" });
+    }
+
+    if (!job.final_equipment_status) {
+      details.push({ field: "final_equipment_status", message: "Final equipment status must be recorded before approval" });
+    }
+
+    if (job.internal_checklist_completed !== true) {
+      details.push({ field: "internal_checklist_completed", message: "Internal checklist must be marked as completed before approval" });
+    }
+
+    if (job.attachments_verified !== true) {
+      details.push({ field: "attachments_verified", message: "Mandatory attachments (photos, sound file, checklist) must be verified before approval" });
+    }
 
     if (details.length > 0) {
       return {
@@ -311,11 +317,6 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
           details,
         },
       };
-    }
-
-    // Return advisory warnings along with success so callers can surface warnings
-    if (advisory.length > 0) {
-      return { success: true, advisory };
     }
 
     return { success: true };

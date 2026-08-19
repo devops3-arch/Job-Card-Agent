@@ -13,6 +13,7 @@ import { validate } from "./middleware/validate.js";
 import { globalLimiter, authLimiter, adminActionLimiter, uploadLimiter } from "./middleware/rateLimiters.js";
 import { signatureUpload, documentUpload, reportUpload, saveUploadedFile, deleteUploadedFile } from "./middleware/upload.js";
 import { generateSecureFilename } from "./utils/uploadHelpers.js";
+import { deriveClosureFields, CLOSURE_COLUMNS } from "./utils/jobClosureFields.js";
 import { generateToken, requireAuth, requireRole, requireDevOrAdmin } from "./middleware/auth.js";
 import * as tokenService from "./services/tokenService.js";
 import * as eventService from "./services/eventService.js";
@@ -782,7 +783,16 @@ app.post(
             userId,
             manager_id
         ];
-        
+
+        // Same derivation as the update path. Without it a job created with the
+        // closure section already filled in would have to be saved a second time
+        // before approval validation could see any of those answers.
+        const createClosureFields = deriveClosureFields(req.body?.evidence);
+        for (const column of CLOSURE_COLUMNS) {
+            columns.push(column);
+            insertValues.push(createClosureFields[column]);
+        }
+
 
         const jsonbColumns = new Set(["parts", "labor", "job_data"]);
 
@@ -1300,6 +1310,20 @@ app.put(
         const fieldValue = ["job_data", "customer_issues", "operating_data", "findings", "evidence"].includes(field)
           ? JSON.stringify(req.body[field]) : req.body[field];
         values.push(fieldValue);
+        index += 1;
+      }
+    }
+
+    // The job closure answers arrive inside `evidence` and are stored there as
+    // JSONB, but approval validation reads the dedicated columns migration 013
+    // added. Nothing wrote those columns, so those checks were reading NULLs and
+    // default falses no matter what the engineer filled in. Derive them here so
+    // the stored JSON and the columns cannot disagree.
+    if ("evidence" in req.body) {
+      const closureFields = deriveClosureFields(req.body.evidence);
+      for (const column of CLOSURE_COLUMNS) {
+        updates.push(`${column} = $${index}`);
+        values.push(closureFields[column]);
         index += 1;
       }
     }
