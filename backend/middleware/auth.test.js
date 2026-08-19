@@ -102,6 +102,65 @@ describe('the x-dev-user-role bypass', () => {
 
     expect(thrown?.statusCode).toBe(401);
   });
+
+  // The gate used to be `NODE_ENV === "production"`, so every value here left
+  // the bypass live and handed full admin to an unauthenticated request. It is
+  // now an allowlist of development environments, so anything unrecognised
+  // fails closed. Deployed config is a string someone typed — treat it as such.
+  test.each([
+    ['Production', 'differently-cased production'],
+    ['PRODUCTION', 'upper-cased production'],
+    ['production ', 'production with trailing whitespace'],
+    ['prod', 'the common abbreviation'],
+    ['staging', 'a non-production deployed environment'],
+    ['', 'an empty value'],
+    [undefined, 'NODE_ENV not set at all'],
+  ])('fails closed when NODE_ENV is %j (%s)', (value) => {
+    if (value === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = value;
+    }
+
+    const { next, thrown } = run(requireAuth, mkReq({ headers: { 'x-dev-user-role': 'admin' } }));
+
+    expect(next).not.toHaveBeenCalled();
+    expect(thrown?.statusCode).toBe(401);
+  });
+
+  test('still works when NODE_ENV is cased as the local .env writes it', () => {
+    process.env.NODE_ENV = 'DEVELOPMENT';
+    const req = mkReq({ headers: { 'x-dev-user-role': 'engineer' } });
+    const { next, thrown } = run(requireAuth, req);
+
+    expect(thrown).toBeNull();
+    expect(next).toHaveBeenCalled();
+    expect(req.user).toEqual({ id: 1, role: 'engineer' });
+  });
+
+  // Because the check above is case-insensitive, a deployed NODE_ENV of
+  // "DEVELOPMENT" would otherwise count as development. App Service injects
+  // WEBSITE_SITE_NAME, so that alone has to be enough to shut the bypass.
+  describe('when running on App Service', () => {
+    const originalSite = process.env.WEBSITE_SITE_NAME;
+    afterEach(() => {
+      if (originalSite === undefined) delete process.env.WEBSITE_SITE_NAME;
+      else process.env.WEBSITE_SITE_NAME = originalSite;
+    });
+
+    test.each(['development', 'DEVELOPMENT', 'test'])(
+      'refuses the bypass even with NODE_ENV=%s',
+      (value) => {
+        process.env.NODE_ENV = value;
+        process.env.WEBSITE_SITE_NAME = 'job-card-agent';
+
+        const { next, thrown } = run(requireAuth, mkReq({ headers: { 'x-dev-user-role': 'admin' } }));
+
+        expect(next).not.toHaveBeenCalled();
+        expect(thrown?.statusCode).toBe(401);
+      },
+    );
+  });
 });
 
 describe('requireRole', () => {

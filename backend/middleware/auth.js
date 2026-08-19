@@ -34,8 +34,28 @@ export const generateToken = (user) => {
   return tokenService.generateAccessToken(user);
 };
 
+// Environments where the header bypass below is allowed to work at all. This is
+// an allowlist on purpose, so that an unset, misspelled or differently-cased
+// NODE_ENV fails closed. The check used to be `NODE_ENV === "production"`, which
+// left the bypass live for "Production", "PRODUCTION", "prod", "staging" and ""
+// — and in that state a request with no Authorization header but a
+// `x-dev-user-role: admin` header is granted full admin, which requireRole then
+// waves through everything.
+const DEV_AUTH_ENVIRONMENTS = new Set(["development", "test"]);
+
+// Second, independent lock. Normalising the case above means a NODE_ENV of
+// "DEVELOPMENT" now counts as development — and the App Service configuration
+// this app deploys to is believed to carry exactly that value, which would keep
+// the bypass live in production. App Service always injects WEBSITE_SITE_NAME
+// into the runtime environment and nothing local sets it, so its presence means
+// "this is the deployed app" no matter how NODE_ENV is spelled. The bypass is a
+// local development convenience; it has no business running on App Service even
+// if someone misconfigures the environment name.
+const isRunningOnAppService = () => Boolean(process.env.WEBSITE_SITE_NAME);
+
 const getDevUser = (req) => {
-  if (process.env.NODE_ENV === "production") {
+  const environment = String(process.env.NODE_ENV ?? "").trim().toLowerCase();
+  if (!DEV_AUTH_ENVIRONMENTS.has(environment) || isRunningOnAppService()) {
     return null;
   }
 
