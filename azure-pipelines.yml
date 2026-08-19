@@ -73,7 +73,12 @@ steps:
   env:
     PROD_DATABASE_URL: $(PROD_DATABASE_URL)
     DATABASE_URL: $(PROD_DATABASE_URL)
-    PGSSLMODE: require
+    # NODE_ENV is what turns SSL on here, not PGSSLMODE. backend/db.js always
+    # passes an explicit `ssl` option to the pg Pool, and pg only falls back to
+    # PGSSLMODE when that option is undefined. PGSSLMODE was therefore inert:
+    # without NODE_ENV=production db.js passes ssl:false, and Azure Postgres
+    # rejects the connection because it requires secure transport.
+    NODE_ENV: production
 
 # ── Clean stale Oryx manifest and verify structure ───────────────────────────
 - script: |
