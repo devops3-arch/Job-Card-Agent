@@ -1,7 +1,18 @@
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
-import { JobCardData } from "@/types/jobCard";
+import autoTable, { RowInput } from "jspdf-autotable";
+import { ApiJob, JobCardData } from "@/types/jobCard";
 import { computePricingSummary } from "@/lib/pricing";
+
+/**
+ * jspdf-autotable hangs the geometry of the table it just drew off the jsPDF
+ * instance, but it does not declare that on jsPDF's own type — so reading where a
+ * table ended needs this. Layout here is a running `y` cursor handed from one
+ * table to the next, so every table but the first depends on it.
+ */
+type DocWithAutoTable = jsPDF & { lastAutoTable: { finalY: number } };
+
+/** Where the table drawn most recently ended. */
+const lastTableBottom = (doc: jsPDF): number => (doc as DocWithAutoTable).lastAutoTable.finalY;
 
 function triggerDownload(blob: Blob, filename: string) {
   // Force PDF mime type so browser & viewers recognize it correctly
@@ -88,7 +99,7 @@ function drawFooter(doc: jsPDF, pageWidth: number, pageHeight: number, images: F
   if (images.onsigen)  doc.addImage(images.onsigen,  "JPEG", 178,   logosY - 1,   18, 10);
 }
 
-export async function generateGlobalPDF(jobs: any[]) {
+export async function generateGlobalPDF(jobs: ApiJob[]) {
     const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -145,24 +156,27 @@ export async function generatePDF(data: JobCardData) {
   const mohanSvgDataUri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iNjAiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IndoaXRlIi8+PHRleHQgeD0iMTAwIiB5PSIzNSIgZm9udC1mYW1pbHk9IkJydXNoIFNjcmlwdCBNVCwgY3Vyc2l2ZSIgZm9udC1zaXplPSIzMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzAwMCI+TW9oYW4gS3Jpc2huYW48L3RleHQ+PC9zdmc+Cg==";
   const sameerSvgDataUri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iNjAiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IndoaXRlIi8+PHRleHQgeD0iMTAwIiB5PSIzNSIgZm9udC1mYW1pbHk9IkJydXNoIFNjcmlwdCBNVCwgY3Vyc2l2ZSIgZm9udC1zaXplPSIzMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzAwMCIgZm9udC1zdHlsZT0iaXRhbGljIj5TYW1lZXIgTGFtYmF5PC90ZXh0Pjwvc3ZnPgo=";
 
-  let managerSignPromise = Promise.resolve(null);
+  // Declared as the union up front so each branch below can assign the loader's
+  // promise directly; the casts that used to be here only existed because the
+  // initialiser narrowed this to Promise<null>.
+  let managerSignPromise: Promise<string | null> = Promise.resolve(null);
   if (data.managerName === "Nitesh gawali") {
-    managerSignPromise = loadImageAsBase64(niteshSvgDataUri) as any;
+    managerSignPromise = loadImageAsBase64(niteshSvgDataUri);
   } else if (data.managerName === "Arvind kumar Jaiswal") {
-    managerSignPromise = loadImageAsBase64("/images/sign_arvind.png") as any;
+    managerSignPromise = loadImageAsBase64("/images/sign_arvind.png");
   } else if (data.managerName === "Mohan Krishnan") {
-    managerSignPromise = loadImageAsBase64(mohanSvgDataUri) as any;
+    managerSignPromise = loadImageAsBase64(mohanSvgDataUri);
   }
 
-  let engineerSignPromise = Promise.resolve(null);
+  let engineerSignPromise: Promise<string | null> = Promise.resolve(null);
   if (data.customerInfo.engineerName === "Bijmon Mathai") {
-    engineerSignPromise = loadImageAsBase64("/images/sign_bijmon_hd.png") as any;
+    engineerSignPromise = loadImageAsBase64("/images/sign_bijmon_hd.png");
   } else if (data.customerInfo.engineerName === "Sinoy Syamalan") {
-    engineerSignPromise = loadImageAsBase64("/images/sign_sinoy_hd.png") as any;
+    engineerSignPromise = loadImageAsBase64("/images/sign_sinoy_hd.png");
   } else if (data.customerInfo.engineerName === "Fasil Musthafa") {
-    engineerSignPromise = loadImageAsBase64("/images/sign_fasil_hd.png") as any;
+    engineerSignPromise = loadImageAsBase64("/images/sign_fasil_hd.png");
   } else if (data.customerInfo.engineerName === "Sameer Lambay") {
-    engineerSignPromise = loadImageAsBase64("/images/sign_sameer.png") as any;
+    engineerSignPromise = loadImageAsBase64("/images/sign_sameer.png");
   }
 
   const [headerImg, kaeserImg, hanwhaImg, excelImg, clivetImg, nedermanImg, onsigenImg, managerSignImg, engineerSignImg] = await Promise.all([
@@ -216,7 +230,7 @@ export async function generatePDF(data: JobCardData) {
     ],
   });
 
-  y = (doc as any).lastAutoTable.finalY + 8.5;
+  y = lastTableBottom(doc) + 8.5;
 
   // Purpose of Visit mapping
   let purposeLabel = "";
@@ -255,13 +269,16 @@ export async function generatePDF(data: JobCardData) {
   doc.text("          We are pleased to submit our offer for the following items as per enquiry:", 14, y);
   y += 7;
 
-  const partsBody = data.parts.map((p, i) => [
+  // PartItem carries qty and unitPrice as number | string, because the form binds
+  // them straight to text inputs. Coercing here rather than calling toFixed on the
+  // union keeps a part that was typed but not yet re-parsed from throwing mid-export.
+  const partsBody: RowInput[] = data.parts.map((p, i) => [
     (i + 1).toString(),
     p.description,
     p.partNumber || "",
-    p.qty.toString(),
-    p.unitPrice.toFixed(2),
-    p.totalPrice.toFixed(2),
+    String(p.qty),
+    Number(p.unitPrice).toFixed(2),
+    Number(p.totalPrice).toFixed(2),
   ]);
 
   while (partsBody.length < 3) {
@@ -289,46 +306,46 @@ export async function generatePDF(data: JobCardData) {
   partsBody.push([
     { content: "PARTS TOTAL", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
     partsTotal.toFixed(2),
-  ] as any);
+  ]);
   partsBody.push([
     { content: "LABOR TOTAL", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
     laborTotal.toFixed(2),
-  ] as any);
+  ]);
 
   if (data.serviceCharge && data.serviceCharge > 0) {
     partsBody.push([
       { content: "SERVICE CHARGE", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
       data.serviceCharge.toFixed(2),
-    ] as any);
+    ]);
   }
 
   if (data.otherExpenses && data.otherExpenses > 0) {
     partsBody.push([
       { content: "OTHER EXPENSES", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
       data.otherExpenses.toFixed(2),
-    ] as any);
+    ]);
   }
 
   partsBody.push([
     { content: "TOTAL AMOUNT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
     totalCost.toFixed(2),
-  ] as any);
+  ]);
 
   if (data.discountPercentage > 0) {
     partsBody.push([
       { content: `DISCOUNT (${data.discountPercentage}%)`, colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
       `- ${discount.toFixed(2)}`,
-    ] as any);
+    ]);
   }
 
   partsBody.push([
     { content: "VAT 5%", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
     vat.toFixed(2),
-  ] as any);
+  ]);
   partsBody.push([
     { content: "TOTAL PRICE INCLUSIVE VAT", colSpan: 5, styles: { halign: "right", fontStyle: "bold" } },
     grandTotal.toFixed(2),
-  ] as any);
+  ]);
 
   autoTable(doc, {
     startY: y,
@@ -349,7 +366,7 @@ export async function generatePDF(data: JobCardData) {
     },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 9;
+  y = lastTableBottom(doc) + 9;
 
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");

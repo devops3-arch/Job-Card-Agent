@@ -129,6 +129,8 @@ export interface ApiJob {
   equipment_year?: string;
   other_expenses?: number | string;
   discount_percentage?: number | string;
+  /** Joined in from pricing_header on the routes that report totals. */
+  grand_total?: number | string;
   engineer_id?: number | null;
   manager_id?: number | null;
   engineer_name?: string;
