@@ -127,10 +127,15 @@ const AiTidyButton = ({ label, value, onChange }: { label: string; value: string
 
 // A textarea with its own tidy-up action. The button sits outside the label so a
 // label click focuses the textarea rather than firing the button.
-const TidyableField = ({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (next: string) => void; placeholder?: string }) => (
+const TidyableField = ({ label, value, onChange, placeholder, required }: { label: string; value: string; onChange: (next: string) => void; placeholder?: string; required?: boolean }) => (
   <div className="space-y-1">
-    <Field label={label}>
-      <Textarea placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+    <Field label={label} required={required}>
+      <Textarea
+        className={required && !value.trim() ? "border-destructive/70 ring-1 ring-destructive/20 focus-visible:ring-destructive/25" : undefined}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </Field>
     <AiTidyButton label={label} value={value} onChange={onChange} />
   </div>
@@ -635,6 +640,32 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     return true;
   };
 
+  // ─── FINDINGS, ISSUES AND FAULT EVIDENCE ───
+  // The engineering record of the visit: what the customer reported, what was
+  // actually wrong, and the state the equipment was left in. A fault code is only
+  // evidence if the photo of it is attached, so that upload is required exactly
+  // when a code has been entered.
+  const validateFindings = (): boolean => {
+    const described = customerIssues.filter((issue) => issue.description?.trim());
+    if (described.length === 0) {
+      toast.error("Describe at least one customer raised issue");
+      return false;
+    }
+    if (!findings.rootCauseDiagnosis?.trim()) {
+      toast.error("Root Cause / Diagnosis is required");
+      return false;
+    }
+    if (!findings.asLeftCondition?.trim()) {
+      toast.error("As Left Condition is required");
+      return false;
+    }
+    if (customerInfo.alarmFaultCode?.trim() && !evidence.alarmFaultPhotoReference?.trim()) {
+      toast.error("Attach the Alarm / Fault Code Photo for the code entered");
+      return false;
+    }
+    return true;
+  };
+
   // ─── MAIN VALIDATION FUNCTION ───
   const validate = (): boolean => {
     // Validate customer info (all required)
@@ -656,6 +687,8 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     // jobWorkflowService, so asking here turns a rejection by the manager into a
     // message while the engineer still has the card open.
     if (!validateClosure()) return false;
+
+    if (!validateFindings()) return false;
     
     // Validate Service Type for breakdown calls
     if (serviceType === "breakdown_call" && !breakdownCallType) {
@@ -1109,7 +1142,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         <Section title="Customer Raised Issues">
           <div className="space-y-4">{customerIssues.map((issue, index) => <div key={index} className="rounded-xl border p-3 space-y-3">
             <div className="flex items-center justify-between"><strong className="text-sm">Issue {index + 1}</strong>{customerIssues.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => setCustomerIssues(customerIssues.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><Field label="Issue description"><Input className={inputClass} value={issue.description} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, description: e.target.value } : x))} /></Field><Field label="Observed Symptom"><Input className={inputClass} value={issue.symptom} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, symptom: e.target.value } : x))} /></Field><Field label="When does fault occur"><Input className={inputClass} value={issue.occurrence} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, occurrence: e.target.value } : x))} /></Field><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={issue.repeatFailure} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, repeatFailure: e.target.checked } : x))} /> Repeat Failure: Yes</label></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><Field label="Issue description" required={index === 0}><Input className={index === 0 ? controlClass(true, issue.description) : inputClass} value={issue.description} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, description: e.target.value } : x))} /></Field><Field label="Observed Symptom"><Input className={inputClass} value={issue.symptom} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, symptom: e.target.value } : x))} /></Field><Field label="When does fault occur"><Input className={inputClass} value={issue.occurrence} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, occurrence: e.target.value } : x))} /></Field><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={issue.repeatFailure} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, repeatFailure: e.target.checked } : x))} /> Repeat Failure: Yes</label></div>
           </div>)}{customerIssues.length < 3 && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={() => setCustomerIssues([...customerIssues, emptyIssue()])}><Plus className="h-4 w-4" /> Add Issue</Button>}</div>
         </Section>
 
@@ -1131,7 +1164,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           />
         </motion.div>
 
-        <Section title="Job Findings & Diagnosis"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><TidyableField label="As Found Condition / Complaint" value={findings.asFoundCondition} onChange={(next) => setFindings({ ...findings, asFoundCondition: next })} /><TidyableField label="Root Cause / Diagnosis" value={findings.rootCauseDiagnosis} onChange={(next) => setFindings({ ...findings, rootCauseDiagnosis: next })} /><TidyableField label="As Left Condition" value={findings.asLeftCondition} onChange={(next) => setFindings({ ...findings, asLeftCondition: next })} /><Field label="Safety / Permit Ref — LOTO or Hot Work Permit No."><Input className={inputClass} value={findings.safetyPermitRef} onChange={(e) => setFindings({ ...findings, safetyPermitRef: e.target.value })} /></Field><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={findings.nextVisitRequired} onChange={(e) => setFindings({ ...findings, nextVisitRequired: e.target.checked })} /> Next Visit Required: Yes</label>{findings.nextVisitRequired && <Field label="Next Visit Notes"><Textarea placeholder="Notes for the next visit" value={findings.nextVisitNotes} onChange={(e) => setFindings({ ...findings, nextVisitNotes: e.target.value })} /></Field>}</div></Section>
+        <Section title="Job Findings & Diagnosis"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><TidyableField label="As Found Condition / Complaint" value={findings.asFoundCondition} onChange={(next) => setFindings({ ...findings, asFoundCondition: next })} /><TidyableField label="Root Cause / Diagnosis" required value={findings.rootCauseDiagnosis} onChange={(next) => setFindings({ ...findings, rootCauseDiagnosis: next })} /><TidyableField label="As Left Condition" required value={findings.asLeftCondition} onChange={(next) => setFindings({ ...findings, asLeftCondition: next })} /><Field label="Safety / Permit Ref — LOTO or Hot Work Permit No."><Input className={inputClass} value={findings.safetyPermitRef} onChange={(e) => setFindings({ ...findings, safetyPermitRef: e.target.value })} /></Field><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={findings.nextVisitRequired} onChange={(e) => setFindings({ ...findings, nextVisitRequired: e.target.checked })} /> Next Visit Required: Yes</label>{findings.nextVisitRequired && <Field label="Next Visit Notes"><Textarea placeholder="Notes for the next visit" value={findings.nextVisitNotes} onChange={(e) => setFindings({ ...findings, nextVisitNotes: e.target.value })} /></Field>}</div></Section>
 
         <Section title="Operating Data"><div className="space-y-3">{["Running Hours", "Load Hours / Duty Cycle", "Discharge Pressure", "Discharge Temperature", "Voltage L1 / L2 / L3", "Current L1 / L2 / L3"].map((parameter) => { const row = operatingData[parameter] || { before: "", after: "", unit: "", remarks: "" }; const setRow = (key: keyof typeof row, value: string) => setOperatingData({ ...operatingData, [parameter]: { ...row, [key]: value } }); return <div key={parameter} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 rounded-lg border p-3"><strong className="text-sm lg:col-span-1">{parameter}</strong><Input className={inputClass} type="number" inputMode="decimal" min={0} step={0.01} placeholder="Before" value={row.before} onChange={(e) => setRow("before", e.target.value)} /><Input className={inputClass} type="number" inputMode="decimal" min={0} step={0.01} placeholder="After" value={row.after} onChange={(e) => setRow("after", e.target.value)} /><Input className={inputClass} placeholder="Unit / N/A" value={row.unit} onChange={(e) => setRow("unit", e.target.value)} /><Input className={inputClass} placeholder="Remarks" value={row.remarks} onChange={(e) => setRow("remarks", e.target.value)} /></div>; })}</div></Section>
 
@@ -1167,7 +1200,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         <Section title="Mandatory Evidence & Job Closure"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FileUploadField label="Sound File" accept="audio/*" value={evidence.soundFileReference} onChange={(files) => setEvidence({ ...evidence, soundFileReference: files })} /><Field label="dB Reading"><Input className={inputClass} type="number" inputMode="numeric" min={0} step={1} value={evidence.dbReading} onChange={(e) => setEvidence({ ...evidence, dbReading: e.target.value })} /></Field><FileUploadField label={`Before, After & Nameplate Photos (Mandatory) — ${evidence.photosReference.length} photos uploaded`} accept="image/*" multiple value={evidence.photosReference} onChange={(files) => setEvidence({ ...evidence, photosReference: files })} /><Field label="Parts Replaced"><Textarea value={evidence.partsReplaced} onChange={(e) => setEvidence({ ...evidence, partsReplaced: e.target.value })} /></Field><Field label="Final Test Run result" required><Select value={evidence.finalTestResult} onValueChange={(v) => setEvidence({ ...evidence, finalTestResult: v })}><SelectTrigger className={controlClass(true, evidence.finalTestResult)}><SelectValue placeholder="Select result" /></SelectTrigger><SelectContent>{["Pass", "Fail", "Temporary Fix", "N/A"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="Final Equipment Status" required><Select value={evidence.finalEquipmentStatus} onValueChange={(v) => setEvidence({ ...evidence, finalEquipmentStatus: v })}><SelectTrigger className={controlClass(true, evidence.finalEquipmentStatus)}><SelectValue placeholder="Select status" /></SelectTrigger><SelectContent>{["Fully Operational", "Temporarily Operational", "Stopped", "Pending Parts", "Further Diagnosis Required"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.quotationRequired} onChange={(e) => setEvidence({ ...evidence, quotationRequired: e.target.checked })} /> Quotation Required: Yes</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.safetyCriticalIssue} onChange={(e) => setEvidence({ ...evidence, safetyCriticalIssue: e.target.checked })} /> Safety Critical Issue Found: Yes</label>{evidence.safetyCriticalIssue && <Field label="Escalated To / Time" required><Input className={controlClass(true, evidence.escalatedToTime)} value={evidence.escalatedToTime} onChange={(e) => setEvidence({ ...evidence, escalatedToTime: e.target.value })} /></Field>}</div><div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3"><RequiredCheck label="Internal checklist completed" checked={evidence.internalChecklistCompleted} onChange={(v) => setEvidence({ ...evidence, internalChecklistCompleted: v })} /><RequiredCheck label="Mandatory attachments verified" checked={evidence.mandatoryAttachmentsVerified} onChange={(v) => setEvidence({ ...evidence, mandatoryAttachmentsVerified: v })} /><label className="flex min-h-11 items-center gap-2 rounded-xl border border-border/60 px-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={evidence.jobReadyForInvoicing} onChange={(e) => setEvidence({ ...evidence, jobReadyForInvoicing: e.target.checked })} /> Job ready for invoicing</label></div></Section>
 
         <div className="section-card -mt-4">
-          <FileUploadField label="Alarm / Fault Code Photo" accept="image/*" value={evidence.alarmFaultPhotoReference ? [evidence.alarmFaultPhotoReference] : []} onChange={(files) => setEvidence({ ...evidence, alarmFaultPhotoReference: files[0] || "" })} />
+          <FileUploadField label="Alarm / Fault Code Photo" required={Boolean(customerInfo.alarmFaultCode?.trim())} accept="image/*" value={evidence.alarmFaultPhotoReference ? [evidence.alarmFaultPhotoReference] : []} onChange={(files) => setEvidence({ ...evidence, alarmFaultPhotoReference: files[0] || "" })} />
         </div>
 
         {/* Bottom Actions */}

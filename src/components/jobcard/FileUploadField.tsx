@@ -10,9 +10,11 @@ interface Props {
   value: string[];
   onChange: (files: string[]) => void;
   multiple?: boolean;
+  /** Marks the upload compulsory: bold label, asterisk, and a red outline until a file is attached. */
+  required?: boolean;
 }
 
-export default function FileUploadField({ label, accept, value, onChange, multiple = false }: Props) {
+export default function FileUploadField({ label, accept, value, onChange, multiple = false, required = false }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -58,10 +60,13 @@ export default function FileUploadField({ label, accept, value, onChange, multip
 
   return (
     <div className="space-y-2">
-      <span className="field-label">{label}</span>
+      <span className={`field-label${required ? " field-label-required" : ""}`}>
+        {label}
+        {required && <span className="ml-1 text-destructive">*</span>}
+      </span>
       <div className="flex flex-wrap items-center gap-2">
         <input ref={inputRef} className="hidden" type="file" accept={accept} multiple={multiple} onChange={(event) => upload(event.target.files)} />
-        <Button type="button" variant="outline" className="min-h-11" disabled={uploading} onClick={() => inputRef.current?.click()}>
+        <Button type="button" variant="outline" className={`min-h-11${required && value.length === 0 ? " border-destructive/70 ring-1 ring-destructive/20" : ""}`} disabled={uploading} onClick={() => inputRef.current?.click()}>
           {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
           {uploading ? "Uploading..." : "Choose File"}
         </Button>
