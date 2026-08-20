@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import type { ApiJob } from "@/types/jobCard";
 import { apiFetch } from "@/lib/api";
 import { isApproved, isAwaitingApproval, isSubmitted } from "@/lib/jobStatus";
-import { CheckCircle2, Clock, FileText, Download, FileSpreadsheet } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Download, FileSpreadsheet, Trash2 } from "lucide-react";
 import { Badge } from "./ui/badge";
 import JobCardForm from "./jobcard/JobCardForm";
+import DeleteJobDialog from "./jobcard/DeleteJobDialog";
 import PricingPanel from "./PricingPanel";
 import { generateGlobalPDF } from "@/utils/exportPdf";
-import { generateExcel } from "@/utils/exportExcel";
 import * as XLSX from "xlsx-js-style";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -40,6 +40,8 @@ const DashboardContent = () => {
     const [jobs, setJobs] = useState<ApiJob[]>([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [selectedJob, setSelectedJob] = useState<ApiJob | null>(null);
+    const [jobPendingDelete, setJobPendingDelete] = useState<ApiJob | null>(null);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const isMobile = useIsMobile();
     const user = (() => { try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; } })();
     const userRole = user?.role || '';
@@ -85,16 +87,21 @@ const DashboardContent = () => {
         setSelectedJob(null);
     };
 
-    const handleDelete = async (jobId: string) => {
-        try {
-            const res = await apiFetch(`/jobs/${jobId}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error("Backend delete failed");
-        } catch {
-            // fallback: remove from localStorage mock too
-        }
-        const updatedJobs = jobs.filter(j => String(j.id) !== String(jobId));
-        localStorage.setItem('mockJobs', JSON.stringify(updatedJobs));
-        setJobs(updatedJobs);
+    // Deleting is a manager/admin action; the endpoint enforces that with
+    // requireRole, and the row button is hidden for engineers to match.
+    const canDelete = userRole === 'manager' || userRole === 'admin';
+
+    const requestDelete = (job: ApiJob) => {
+        setJobPendingDelete(job);
+        setDeleteDialogOpen(true);
+    };
+
+    // Runs only after the server confirms the soft delete, so the row is never
+    // removed optimistically — the previous handler dropped it from the list even
+    // when the request failed, which made a failed delete look like a success.
+    const handleDeleted = (jobId: number) => {
+        setJobs((current) => current.filter((j) => Number(j.id) !== jobId));
+        setJobPendingDelete(null);
         window.dispatchEvent(new Event('jobsUpdated'));
     };
 
@@ -305,12 +312,24 @@ const DashboardContent = () => {
                                                 <td className="px-6 py-4.5">{getStatusBadge(job.status)}</td>
                                                 <td className="px-6 py-4.5 text-slate-900 font-bold text-right">{job.grand_total ? (typeof job.grand_total === 'number' ? `₹${job.grand_total.toFixed(2)}` : job.grand_total) : "—"}</td>
                                                 <td className="px-6 py-4.5 text-right">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleEdit(job); }}
-                                                        className="text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100 mr-2"
-                                                    >
-                                                        Review Report
-                                                    </button>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleEdit(job); }}
+                                                            className="text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                        >
+                                                            Review Report
+                                                        </button>
+                                                        {canDelete && (
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); requestDelete(job); }}
+                                                                aria-label={`Delete job card ${job.job_card_no || job.id}`}
+                                                                title="Delete job card"
+                                                                className="text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </motion.tr>
                                         ))}
@@ -319,6 +338,13 @@ const DashboardContent = () => {
                             </table>
                         </div>
                     </motion.div>
+
+                    <DeleteJobDialog
+                        job={jobPendingDelete}
+                        open={deleteDialogOpen}
+                        onOpenChange={setDeleteDialogOpen}
+                        onDeleted={handleDeleted}
+                    />
         </div>
     );
 };

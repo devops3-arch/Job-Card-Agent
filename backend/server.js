@@ -2148,6 +2148,11 @@ app.delete(
         throw new AppError("Insufficient permissions", 403, "FORBIDDEN");
       }
 
+      // deleted_by and updated_by must not share a parameter. deleted_by is an
+      // integer referencing users(id) while updated_by is text, so binding both to
+      // $2 made Postgres fail to deduce a single type for it — every delete came
+      // back "inconsistent types deduced for parameter $2" and no job was ever
+      // deleted. Each column gets its own placeholder now.
       await client.query(
         `UPDATE job_master
          SET status = $1,
@@ -2155,9 +2160,9 @@ app.delete(
              deleted_by = $2,
              delete_reason = $3,
              updated_at = CURRENT_TIMESTAMP,
-             updated_by = $2
-         WHERE id = $4`,
-        [JOB_STATUSES.DELETED, req.user.id, req.body.delete_reason, jobId]
+             updated_by = $4
+         WHERE id = $5`,
+        [JOB_STATUSES.DELETED, req.user.id, req.body.delete_reason, String(req.user.id), jobId]
       );
 
       await client.query("COMMIT");
