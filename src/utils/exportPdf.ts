@@ -101,6 +101,64 @@ function drawFooter(doc: jsPDF, pageWidth: number, pageHeight: number, images: F
   if (images.onsigen)  doc.addImage(images.onsigen,  "JPEG", 178,   logosY - 1,   18, 10);
 }
 
+/**
+ * Who signs the quotation, and how they are identified on it.
+ *
+ * Previously five if-else chains keyed on the same name string in five places —
+ * designation, phone, signature image and image size — so adding a colleague meant
+ * editing all of them and any one could be missed.
+ */
+type Signatory = { designation: string; phone: string; wideSignature?: boolean };
+
+const DEFAULT_PHONE = "04-8132672";
+
+const ENGINEERS: Record<string, Signatory> = {
+  "Bijmon Mathai": { designation: "BDE-Service", phone: DEFAULT_PHONE },
+  "Sinoy Syamalan": { designation: "Service Sales Engineer", phone: DEFAULT_PHONE },
+  "Fasil Musthafa": { designation: "Sales Engineer", phone: "04-8132670(056-2812627)", wideSignature: true },
+  "Sameer Lambay": { designation: "Assistant Service Manager", phone: "04-8132672(055-904-1721)" },
+};
+
+const MANAGERS: Record<string, Signatory> = {
+  "Nitesh gawali": { designation: "Service Manager", phone: "04-8132672 (056-153-8433)" },
+  "Arvind kumar Jaiswal": { designation: "Assistant Operations Manager", phone: "02-5545875 (055-376-7147)", wideSignature: true },
+  "Mohan Krishnan": { designation: "Manager", phone: DEFAULT_PHONE },
+};
+
+/**
+ * Draws one signatory column: signature, name, designation, phone.
+ *
+ * Both columns go through this, so the engineer and the manager blocks line up
+ * with each other by construction rather than by two sets of coordinates that
+ * have to be kept in step.
+ */
+const drawSignatory = (
+  doc: jsPDF,
+  x: number,
+  signatureY: number,
+  name: string,
+  details: Signatory | undefined,
+  signatureImage: string | null,
+) => {
+  if (signatureImage && signatureImage.length > 10) {
+    if (details?.wideSignature) doc.addImage(signatureImage, "JPEG", x, signatureY - 6, 36, 12);
+    else doc.addImage(signatureImage, "JPEG", x, signatureY - 4, 30, 9);
+  }
+
+  let lineY = signatureY + 11;
+  doc.setFontSize(10.5);
+  doc.setFont("helvetica", "bolditalic");
+  doc.text(name, x, lineY);
+
+  lineY += 5;
+  if (details?.designation) doc.text(details.designation, x, lineY);
+
+  lineY += 5;
+  doc.text(details?.phone ?? DEFAULT_PHONE, x, lineY);
+
+  return lineY;
+};
+
 export async function generateGlobalPDF(jobs: ApiJob[]) {
     const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -401,80 +459,53 @@ export async function generatePDF(data: JobCardData) {
   const taxTextWidth = doc.getTextWidth("TAX Registrations No# Bhatia Brothers FZE - TRN Code – 100276105200003");
   doc.line(14, y + 1.1, 14 + taxTextWidth, y + 1.1);
 
-  y += 12;
+  // 9mm rather than 12: the sign-off below runs ~31mm and the footer claims the
+  // last 21mm of the page, so the old rhythm put the phone line on top of the
+  // partner logos on a full quotation.
+  y += 9;
+
+  // Keep the sign-off clear of the footer. The footer rule and the partner logos
+  // occupy the last 21mm of the page, and the signatory block runs about 26mm from
+  // the "Best Regards" baseline — on a full quotation the phone line landed on top
+  // of the logos. If it will not fit, finish this page properly (footer and all)
+  // and carry the sign-off onto a fresh one under the same letterhead.
+  const footerTop = pageHeight - 24;
+  const signOffHeight = 31;
+  if (y + signOffHeight > footerTop) {
+    drawFooter(doc, pageWidth, pageHeight, footerImages);
+    doc.addPage();
+    drawHeader(doc, pageWidth, headerImg);
+    y = 48;
+  }
 
   doc.setFontSize(11.5);
   doc.setFont("helvetica", "bold");
   doc.text("Best Regards,", 14, y);
-  y += 10;
+  y += 8;
 
-  // Left Signature: Selected Engineer
-  if (engineerSignImg && engineerSignImg.length > 10 && data.customerInfo.engineerName) {
-    if (data.customerInfo.engineerName === "Fasil Musthafa") {
-      doc.addImage(engineerSignImg, "JPEG", 14, y - 6, 36, 12);
-    } else {
-      doc.addImage(engineerSignImg, "JPEG", 14, y - 4, 30, 9);
-    }
-  }
+  // Two signatory columns on the left and right halves of the content area. The
+  // right column used to sit at a hard-coded x=130, which left the left half far
+  // wider than the right and the manager's block crowded toward the page edge.
+  const contentLeft = 14;
+  const contentRight = pageWidth - 14;
+  const columnRight = (contentLeft + contentRight) / 2;
 
-  // Right Signature: Selected Manager
-  if (managerSignImg && managerSignImg.length > 10 && data.managerName) {
-    if (data.managerName === "Arvind kumar Jaiswal") {
-      doc.addImage(managerSignImg, "JPEG", 130, y - 6, 36, 12);
-    } else {
-      doc.addImage(managerSignImg, "JPEG", 130, y - 4, 30, 9);
-    }
-  }
+  const engineerName = data.customerInfo.engineerName?.trim() || "";
+  const managerName = data.managerName?.trim() || "";
 
-  y += 14;
+  // No placeholder name. This document goes to a customer, so printing the words
+  // "Engineer Name" where a person should be is worse than leaving the space
+  // blank — and until GET /jobs/:id returned the name at all, that placeholder was
+  // what every PDF exported from the pricing screen actually carried.
+  const lastLeftY = engineerName
+    ? drawSignatory(doc, contentLeft, y, engineerName, ENGINEERS[engineerName], engineerSignImg)
+    : y + 14;
 
-  doc.setFontSize(10.5);
-  doc.setFont("helvetica", "bolditalic");
-  
-  // Left Name
-  doc.text(data.customerInfo.engineerName || "Engineer Name", 14, y);
-  // Right Name
-  if (data.managerName) {
-    doc.text(data.managerName, 130, y);
-  }
+  const lastRightY = managerName
+    ? drawSignatory(doc, columnRight, y, managerName, MANAGERS[managerName], managerSignImg)
+    : y + 14;
 
-  y += 5;
-
-  // Left Designation
-  let engDesignation = "";
-  if (data.customerInfo.engineerName === "Bijmon Mathai") engDesignation = "BDE-Service";
-  else if (data.customerInfo.engineerName === "Sinoy Syamalan") engDesignation = "Service Sales Engineer";
-  else if (data.customerInfo.engineerName === "Fasil Musthafa") engDesignation = "Sales Engineer";
-  else if (data.customerInfo.engineerName === "Sameer Lambay") engDesignation = "Assistant Service Manager";
-  doc.text(engDesignation, 14, y);
-
-  // Right Designation
-  if (data.managerName) {
-    let designation = "";
-    if (data.managerName === "Arvind kumar Jaiswal") designation = "Assistant Operations Manager";
-    else if (data.managerName === "Mohan Krishnan") designation = "Manager";
-    else if (data.managerName === "Nitesh gawali") designation = "Service Manager";
-    doc.text(designation, 130, y);
-  }
-
-  y += 5;
-
-  // Left Number
-  let phone = "04-8132672";
-  if (data.customerInfo.engineerName === "Sameer Lambay") phone = "04-8132672(055-904-1721)";
-  else if (data.customerInfo.engineerName === "Fasil Musthafa") phone = "04-8132670(056-2812627)";
-  else if (data.customerInfo.engineerName === "Sinoy Syamalan") phone = "04-8132672";
-  else if (data.customerInfo.engineerName === "Bijmon Mathai") phone = "04-8132672";
-  doc.text(phone, 14, y);
-  
-  // Right Number
-  if (data.managerName) {
-    let rightPhone = "";
-    if (data.managerName === "Nitesh gawali") rightPhone = "04-8132672 (056-153-8433)";
-    else if (data.managerName === "Arvind kumar Jaiswal") rightPhone = "02-5545875 (055-376-7147)";
-    else rightPhone = "04-8132672";
-    doc.text(rightPhone, 130, y);
-  }
+  y = Math.max(lastLeftY, lastRightY);
 
   y += 10;
 

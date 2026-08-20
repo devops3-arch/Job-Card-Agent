@@ -1115,7 +1115,14 @@ app.get(
                 status,
                 job_data,
                 engineer_id,
-                manager_id
+                manager_id,
+                -- The names, not just the ids. Without these the pricing panel had
+                -- no engineer or manager name, so the exported PDF printed the
+                -- literal "Engineer Name", warned "No Manager Name on this job",
+                -- and could not match either signature image — all of which are
+                -- selected by comparing against the person's name.
+                (SELECT name FROM users WHERE users.id = job_master.engineer_id) AS engineer_name,
+                (SELECT name FROM users WHERE users.id = job_master.manager_id) AS manager_name
              FROM job_master
              WHERE id = $1`,
           [id]
