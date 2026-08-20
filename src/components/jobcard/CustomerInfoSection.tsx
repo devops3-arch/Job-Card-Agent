@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BreakdownCallType, CustomerInfo, ServiceType, SalesArea } from "@/types/jobCard";
 import { sampleCustomers } from "@/data/defaultChecklist";
 import { apiFetch } from "@/lib/api";
+import FieldLabel from "./FieldLabel";
+import { controlClass, inputClass } from "@/lib/fieldStyles";
 import { useEffect, useState } from "react";
 
 interface UserOption {
@@ -55,17 +57,6 @@ const TIME_OPTIONS: { value: string; label: string }[] = (() => {
   return options;
 })();
 
-/**
- * Field label. Required fields are bolder, darker and carry a red asterisk —
- * previously the asterisk was baked into the label string and several fields the
- * form actually enforces had none at all.
- */
-const FieldLabel = ({ label, required }: { label: string; required?: boolean }) => (
-  <label className={`field-label${required ? " field-label-required" : ""}`}>
-    {label}
-    {required && <span className="ml-1 text-destructive">*</span>}
-  </label>
-);
 
 const serviceTypes: { value: ServiceType; label: string; emoji: string }[] = [
   { value: "service_contract", label: "Service Contract", emoji: "📋" },
@@ -89,7 +80,6 @@ const fieldVariants = {
   }),
 };
 
-const inputClass = "h-11 rounded-xl border-border/60 bg-background hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all duration-300";
 
 const CustomerInfoSection = ({
   data,
@@ -178,7 +168,7 @@ const CustomerInfoSection = ({
               <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
                 <FieldLabel label={f.label} required={f.required} />
                 <Select value={breakdownCallType} onValueChange={(v) => onBreakdownCallTypeChange(v as BreakdownCallType)}>
-                  <SelectTrigger className={inputClass}>
+                  <SelectTrigger className={controlClass(f.required, breakdownCallType)}>
                     <SelectValue placeholder="Select breakdown call type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -198,7 +188,7 @@ const CustomerInfoSection = ({
                   value={(data[f.field as keyof CustomerInfo] as string) || ""}
                   onValueChange={(v) => update(f.field as keyof CustomerInfo, v)}
                 >
-                  <SelectTrigger className={inputClass}>
+                  <SelectTrigger className={controlClass(f.required, data[f.field as keyof CustomerInfo])}>
                     <SelectValue placeholder="Select time" />
                   </SelectTrigger>
                   <SelectContent className="max-h-64">
@@ -209,14 +199,14 @@ const CustomerInfoSection = ({
                 </Select>
               ) : f.field === "customerName" ? (
                 <div className="relative">
-                  <Input className={inputClass} placeholder={f.placeholder} value={data.customerName} onChange={(e) => { setCustomerQuery(e.target.value); update("customerName", e.target.value); }} onFocus={() => customerMatches.length > 0 && setShowCustomerMatches(true)} />
+                  <Input className={controlClass(f.required, data.customerName)} placeholder={f.placeholder} value={data.customerName} onChange={(e) => { setCustomerQuery(e.target.value); update("customerName", e.target.value); }} onFocus={() => customerMatches.length > 0 && setShowCustomerMatches(true)} />
                   {showCustomerMatches && customerMatches.length > 0 && <div className="absolute left-0 right-0 top-full z-20 max-h-60 overflow-auto rounded-lg border bg-background shadow-lg">
                     {customerMatches.map((customer) => <button type="button" key={customer.id} className="block min-h-11 w-full border-b px-3 py-2 text-left hover:bg-muted" onMouseDown={(e) => e.preventDefault()} onClick={() => { update("customerName", customer.name); update("customerCode", customer.code || ""); update("email", customer.email || ""); update("contactNo", customer.contact || ""); setCustomerQuery(customer.name); setShowCustomerMatches(false); }}>{customer.name}{customer.code ? ` (${customer.code})` : ""}</button>)}
                   </div>}
                 </div>
               ) : f.type === "select" ? (
                 <Select value={data.customerName} onValueChange={(v) => update("customerName", v)}>
-                  <SelectTrigger className={inputClass}>
+                  <SelectTrigger className={controlClass(f.required, data.customerName)}>
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -227,7 +217,7 @@ const CustomerInfoSection = ({
                 </Select>
               ) : f.type === "serviceType" ? (
                 <Select value={serviceType} onValueChange={(v) => onServiceTypeChange(v as ServiceType)}>
-                  <SelectTrigger className={inputClass}>
+                  <SelectTrigger className={controlClass(f.required, serviceType)}>
                     <SelectValue placeholder="Select service type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -238,7 +228,7 @@ const CustomerInfoSection = ({
                 </Select>
               ) : f.type === "salesArea" ? (
                 <Select value={data.salesArea} onValueChange={(v) => update("salesArea", v)}>
-                  <SelectTrigger className={inputClass}>
+                  <SelectTrigger className={controlClass(f.required, data.salesArea)}>
                     <SelectValue placeholder="Select location" />
                   </SelectTrigger>
                   <SelectContent>
@@ -250,7 +240,7 @@ const CustomerInfoSection = ({
               ) : f.type === "engineerName" ? (
                 engineerReadOnly ? (
                   <Input
-                    className={inputClass}
+                    className={controlClass(f.required, resolvedEngineerName)}
                     value={data.engineerName || ""}
                     disabled
                     placeholder="Engineer assigned"
@@ -260,7 +250,7 @@ const CustomerInfoSection = ({
                     const selected = engineerOptions.find((item) => String(item.id) === value);
                     onEngineerChange(selected?.id ?? null, (selected?.name ?? data.engineerName) || "");
                   }}>
-                    <SelectTrigger className={inputClass}>
+                    <SelectTrigger className={controlClass(f.required, resolvedEngineerName)}>
                       <SelectValue placeholder={resolvedEngineerName ? resolvedEngineerName : "Select engineer"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -283,7 +273,7 @@ const CustomerInfoSection = ({
                   const selected = managerOptions.find((item) => String(item.id) === value);
                   onManagerChange(selected?.id ?? null, (selected?.name ?? managerName) || "");
                 }}>
-                  <SelectTrigger className={inputClass}>
+                  <SelectTrigger className={controlClass(f.required, resolvedManagerName)}>
                     <SelectValue placeholder={resolvedManagerName ? resolvedManagerName : "Select manager"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -304,7 +294,7 @@ const CustomerInfoSection = ({
                 <div className="relative group">
                   <f.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors duration-300" />
                   <Input
-                    className={`pl-10 ${inputClass}`}
+                    className={`pl-10 ${controlClass(f.required, (data as unknown as Record<string, string>)[f.field!])}`}
                     type={f.inputType || "text"}
                     placeholder={f.placeholder}
                     value={(data as unknown as Record<string, string>)[f.field!] || ""}
@@ -313,7 +303,7 @@ const CustomerInfoSection = ({
                 </div>
               ) : (
                 <Input
-                  className={inputClass}
+                  className={controlClass(f.required, (data as unknown as Record<string, string>)[f.field!])}
                   placeholder={f.placeholder}
                   value={(data as unknown as Record<string, string>)[f.field!] || ""}
                   onChange={(e) => update(f.field as keyof CustomerInfo, e.target.value)}

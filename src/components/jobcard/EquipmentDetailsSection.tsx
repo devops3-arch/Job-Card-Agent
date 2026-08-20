@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { CustomerInfo } from "@/types/jobCard";
 import { equipmentMasterList, searchEquipment } from "@/data/equipmentMaster";
 import { apiFetch } from "@/lib/api";
+import FieldLabel from "./FieldLabel";
+import { controlClass } from "@/lib/fieldStyles";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import FileUploadField from "./FileUploadField";
 
@@ -69,10 +71,10 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
 
   const fields = [
     { label: "Equipment Model", field: "equipmentModel", placeholder: "Kaeser", readOnly: true },
-    { label: "Brand Description", field: "equipmentBrandDescription", placeholder: "Select compressor model" },
-    { label: "Part No", field: "equipmentPartNo", placeholder: "Part number" },
-    { label: "Serial No", field: "equipmentSerialNo", placeholder: "Serial number" },
-    { label: "Year", field: "equipmentYear", placeholder: "Year" },
+    { label: "Brand Description", field: "equipmentBrandDescription", placeholder: "Select compressor model" , required: true },
+    { label: "Part No", field: "equipmentPartNo", placeholder: "Part number" , required: true },
+    { label: "Serial No", field: "equipmentSerialNo", placeholder: "Serial number" , required: true },
+    { label: "Year", field: "equipmentYear", placeholder: "Year" , required: true },
     { label: "Customer Equipment ID", field: "customerEquipmentId", placeholder: "Equipment ID" },
     { label: "Equipment Type", field: "equipmentType", placeholder: "Screw Compressor, Rotary..." },
     { label: "Meter Reading / Running Hours", field: "meterReading", placeholder: "Hours", inputType: "number" },
@@ -106,7 +108,7 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
           if (field.field === "equipmentModel") {
             return (
               <motion.div key={field.field} custom={index} variants={fieldVariants} initial="hidden" animate="visible">
-                <label className="field-label">{field.label}</label>
+                <FieldLabel label={field.label} required={field.required} />
                 <Input
                   className={inputClass}
                   placeholder={field.placeholder}
@@ -121,8 +123,8 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
           if (field.field === "equipmentBrandDescription") {
             return (
               <motion.div key={field.field} custom={index} variants={fieldVariants} initial="hidden" animate="visible" className="relative">
-                <label className="field-label">{field.label}</label>
-                <Input className={inputClass} placeholder={field.placeholder} value={(data as unknown as Record<string, string>)[field.field] || ""} onChange={(event) => handleBrandDescriptionChange(event.target.value)} onFocus={() => (data as unknown as Record<string, string>)[field.field] && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 100)} />
+                <FieldLabel label={field.label} required={field.required} />
+                <Input className={controlClass(field.required, (data as unknown as Record<string, string>)[field.field])} placeholder={field.placeholder} value={(data as unknown as Record<string, string>)[field.field] || ""} onChange={(event) => handleBrandDescriptionChange(event.target.value)} onFocus={() => (data as unknown as Record<string, string>)[field.field] && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 100)} />
                 {showSuggestions && equipmentSuggestions.length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border rounded-lg shadow-lg max-h-96 overflow-y-auto z-10">
                     {equipmentSuggestions.map((eq, idx) => (
@@ -146,9 +148,9 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
 
           return (
             <motion.div key={field.field} custom={index} variants={fieldVariants} initial="hidden" animate="visible">
-              <label className="field-label">{field.label}</label>
+              <FieldLabel label={field.label} required={field.required} />
               <Input
-                className={inputClass}
+                className={controlClass(field.required, (data as unknown as Record<string, string>)[field.field])}
                 placeholder={field.placeholder}
                 type={field.inputType || "text"}
                 inputMode={field.inputType === "number" ? "numeric" : undefined}

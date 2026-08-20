@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, type ReactNode } from "react";
 import type { ApiJob, ApiPart, ApiLabor, ApiErrorDetail } from "@/types/jobCard";
 import type { Dispatch, SetStateAction } from "react";
 import { apiFetch } from "@/lib/api";
+import { controlClass } from "@/lib/fieldStyles";
 import { normalizeApiError } from "@/lib/apiError";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap, Plus, Trash2 } from "lucide-react";
@@ -56,7 +57,29 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
     <div className="mt-4">{children}</div>
   </details>
 );
-const Field = ({ label, children }: { label: string; children: ReactNode }) => <label className="block space-y-1"><span className="field-label">{label}</span>{children}</label>;
+const Field = ({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) => (
+  <label className="block space-y-1">
+    <span className={`field-label${required ? " field-label-required" : ""}`}>
+      {label}
+      {required && <span className="ml-1 text-destructive">*</span>}
+    </span>
+    {children}
+  </label>
+);
+
+/**
+ * A compulsory tickbox that is still unticked, outlined in red like the other
+ * compulsory controls. These four closure answers are enforced at approval by
+ * jobWorkflowService, so leaving them blank produces a job card the manager has
+ * to reject — the form asks for them here instead.
+ */
+const RequiredCheck = ({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) => (
+  <label className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm transition-colors ${checked ? "border-border/60" : "border-destructive/70 ring-1 ring-destructive/20"}`}>
+    <input type="checkbox" className="h-5 w-5" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <span className={checked ? "" : "font-semibold text-foreground"}>{label}</span>
+    {!checked && <span className="text-destructive">*</span>}
+  </label>
+);
 
 // Sends a free-text field through /api/ai/clean-work-description and writes the
 // tidied text back. Works with no OPENAI_API_KEY configured: the endpoint falls
@@ -584,6 +607,34 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     return true;
   };
 
+  // ─── JOB CLOSURE VALIDATION ───
+  // Mirrors the checks in backend/services/jobWorkflowService.js, which block
+  // approval outright. Keeping them in step means the engineer is told now rather
+  // than the manager discovering it later.
+  const validateClosure = (): boolean => {
+    if (!evidence.finalTestResult?.trim()) {
+      toast.error("Final Test Run result is required");
+      return false;
+    }
+    if (!evidence.finalEquipmentStatus?.trim()) {
+      toast.error("Final Equipment Status is required");
+      return false;
+    }
+    if (!evidence.internalChecklistCompleted) {
+      toast.error("Internal checklist must be marked completed");
+      return false;
+    }
+    if (!evidence.mandatoryAttachmentsVerified) {
+      toast.error("Mandatory attachments must be verified");
+      return false;
+    }
+    if (evidence.safetyCriticalIssue && !evidence.escalatedToTime?.trim()) {
+      toast.error("A safety critical issue needs escalation details");
+      return false;
+    }
+    return true;
+  };
+
   // ─── MAIN VALIDATION FUNCTION ───
   const validate = (): boolean => {
     // Validate customer info (all required)
@@ -600,6 +651,11 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
     
     // Validate labor (at least one row required)
     if (!validateLabor()) return false;
+
+    // Validate the job closure answers. These are enforced again at approval by
+    // jobWorkflowService, so asking here turns a rejection by the manager into a
+    // message while the engineer still has the card open.
+    if (!validateClosure()) return false;
     
     // Validate Service Type for breakdown calls
     if (serviceType === "breakdown_call" && !breakdownCallType) {
@@ -1108,7 +1164,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           </motion.div>
         )}
 
-        <Section title="Mandatory Evidence & Job Closure"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FileUploadField label="Sound File" accept="audio/*" value={evidence.soundFileReference} onChange={(files) => setEvidence({ ...evidence, soundFileReference: files })} /><Field label="dB Reading"><Input className={inputClass} type="number" inputMode="numeric" min={0} step={1} value={evidence.dbReading} onChange={(e) => setEvidence({ ...evidence, dbReading: e.target.value })} /></Field><FileUploadField label={`Before, After & Nameplate Photos (Mandatory) — ${evidence.photosReference.length} photos uploaded`} accept="image/*" multiple value={evidence.photosReference} onChange={(files) => setEvidence({ ...evidence, photosReference: files })} /><Field label="Parts Replaced"><Textarea value={evidence.partsReplaced} onChange={(e) => setEvidence({ ...evidence, partsReplaced: e.target.value })} /></Field><Field label="Final Test Run result"><Select value={evidence.finalTestResult} onValueChange={(v) => setEvidence({ ...evidence, finalTestResult: v })}><SelectTrigger className={inputClass}><SelectValue placeholder="Select result" /></SelectTrigger><SelectContent>{["Pass", "Fail", "Temporary Fix", "N/A"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="Final Equipment Status"><Select value={evidence.finalEquipmentStatus} onValueChange={(v) => setEvidence({ ...evidence, finalEquipmentStatus: v })}><SelectTrigger className={inputClass}><SelectValue placeholder="Select status" /></SelectTrigger><SelectContent>{["Fully Operational", "Temporarily Operational", "Stopped", "Pending Parts", "Further Diagnosis Required"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.quotationRequired} onChange={(e) => setEvidence({ ...evidence, quotationRequired: e.target.checked })} /> Quotation Required: Yes</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.safetyCriticalIssue} onChange={(e) => setEvidence({ ...evidence, safetyCriticalIssue: e.target.checked })} /> Safety Critical Issue Found: Yes</label>{evidence.safetyCriticalIssue && <Field label="Escalated To / Time"><Input className={inputClass} value={evidence.escalatedToTime} onChange={(e) => setEvidence({ ...evidence, escalatedToTime: e.target.value })} /></Field>}</div><div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">{([["internalChecklistCompleted", "Internal checklist completed"], ["mandatoryAttachmentsVerified", "Mandatory attachments verified"], ["jobReadyForInvoicing", "Job ready for invoicing"]] as const).map(([key, label]) => <label key={key} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={evidence[key]} onChange={(e) => setEvidence({ ...evidence, [key]: e.target.checked })} /> {label}</label>)}</div></Section>
+        <Section title="Mandatory Evidence & Job Closure"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FileUploadField label="Sound File" accept="audio/*" value={evidence.soundFileReference} onChange={(files) => setEvidence({ ...evidence, soundFileReference: files })} /><Field label="dB Reading"><Input className={inputClass} type="number" inputMode="numeric" min={0} step={1} value={evidence.dbReading} onChange={(e) => setEvidence({ ...evidence, dbReading: e.target.value })} /></Field><FileUploadField label={`Before, After & Nameplate Photos (Mandatory) — ${evidence.photosReference.length} photos uploaded`} accept="image/*" multiple value={evidence.photosReference} onChange={(files) => setEvidence({ ...evidence, photosReference: files })} /><Field label="Parts Replaced"><Textarea value={evidence.partsReplaced} onChange={(e) => setEvidence({ ...evidence, partsReplaced: e.target.value })} /></Field><Field label="Final Test Run result" required><Select value={evidence.finalTestResult} onValueChange={(v) => setEvidence({ ...evidence, finalTestResult: v })}><SelectTrigger className={controlClass(true, evidence.finalTestResult)}><SelectValue placeholder="Select result" /></SelectTrigger><SelectContent>{["Pass", "Fail", "Temporary Fix", "N/A"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="Final Equipment Status" required><Select value={evidence.finalEquipmentStatus} onValueChange={(v) => setEvidence({ ...evidence, finalEquipmentStatus: v })}><SelectTrigger className={controlClass(true, evidence.finalEquipmentStatus)}><SelectValue placeholder="Select status" /></SelectTrigger><SelectContent>{["Fully Operational", "Temporarily Operational", "Stopped", "Pending Parts", "Further Diagnosis Required"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.quotationRequired} onChange={(e) => setEvidence({ ...evidence, quotationRequired: e.target.checked })} /> Quotation Required: Yes</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.safetyCriticalIssue} onChange={(e) => setEvidence({ ...evidence, safetyCriticalIssue: e.target.checked })} /> Safety Critical Issue Found: Yes</label>{evidence.safetyCriticalIssue && <Field label="Escalated To / Time" required><Input className={controlClass(true, evidence.escalatedToTime)} value={evidence.escalatedToTime} onChange={(e) => setEvidence({ ...evidence, escalatedToTime: e.target.value })} /></Field>}</div><div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3"><RequiredCheck label="Internal checklist completed" checked={evidence.internalChecklistCompleted} onChange={(v) => setEvidence({ ...evidence, internalChecklistCompleted: v })} /><RequiredCheck label="Mandatory attachments verified" checked={evidence.mandatoryAttachmentsVerified} onChange={(v) => setEvidence({ ...evidence, mandatoryAttachmentsVerified: v })} /><label className="flex min-h-11 items-center gap-2 rounded-xl border border-border/60 px-3 text-sm"><input type="checkbox" className="h-5 w-5" checked={evidence.jobReadyForInvoicing} onChange={(e) => setEvidence({ ...evidence, jobReadyForInvoicing: e.target.checked })} /> Job ready for invoicing</label></div></Section>
 
         <div className="section-card -mt-4">
           <FileUploadField label="Alarm / Fault Code Photo" accept="image/*" value={evidence.alarmFaultPhotoReference ? [evidence.alarmFaultPhotoReference] : []} onChange={(files) => setEvidence({ ...evidence, alarmFaultPhotoReference: files[0] || "" })} />
