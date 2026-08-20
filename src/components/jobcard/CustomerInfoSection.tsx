@@ -33,6 +33,40 @@ interface Props {
   onEngineerChange: (id: number | null, name: string) => void;
 }
 
+/**
+ * Quarter-hour options for the site arrival and departure times.
+ *
+ * The value stored is 24-hour "HH:MM", which is what the time_in / time_out
+ * Postgres TIME columns accept. The label is 12-hour, which is how the engineers
+ * filling this in on site read a clock.
+ */
+const TIME_OPTIONS: { value: string; label: string }[] = (() => {
+  const options: { value: string; label: string }[] = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    for (const minute of [0, 15, 30, 45]) {
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+      options.push({
+        value: `${pad(hour)}:${pad(minute)}`,
+        label: `${hour12}:${pad(minute)} ${hour < 12 ? "AM" : "PM"}`,
+      });
+    }
+  }
+  return options;
+})();
+
+/**
+ * Field label. Required fields are bolder, darker and carry a red asterisk —
+ * previously the asterisk was baked into the label string and several fields the
+ * form actually enforces had none at all.
+ */
+const FieldLabel = ({ label, required }: { label: string; required?: boolean }) => (
+  <label className={`field-label${required ? " field-label-required" : ""}`}>
+    {label}
+    {required && <span className="ml-1 text-destructive">*</span>}
+  </label>
+);
+
 const serviceTypes: { value: ServiceType; label: string; emoji: string }[] = [
   { value: "service_contract", label: "Service Contract", emoji: "📋" },
   { value: "warranty", label: "Under Warranty / AMC", emoji: "🛡️" },
@@ -100,26 +134,30 @@ const CustomerInfoSection = ({
     onChange({ ...data, [field]: value });
   };
 
+  // `required` drives both the asterisk and the bolder label, and matches exactly
+  // what validateCustomerInfo enforces on submit. Ref No, Customer Code, Attention
+  // Of and Contact No were already rejected when blank but carried no marker, so
+  // the form failed on fields it had never asked for.
   const fields = [
-    { label: "Customer Name *", field: "customerName", placeholder: "Search customer name" },
+    { label: "Customer Name", field: "customerName", placeholder: "Search customer name", required: true },
     { label: "Customer Location / Site", field: "customerLocation", placeholder: "Site / location" },
-    { label: "Time IN", field: "timeIn", placeholder: "HH:MM", inputType: "time" },
-    { label: "Time OUT", field: "timeOut", placeholder: "HH:MM", inputType: "time" },
+    { label: "Time IN", type: "timeSelect", field: "timeIn", required: true, helper: "Arrival time on site" },
+    { label: "Time OUT", type: "timeSelect", field: "timeOut", required: true, helper: "Departure time from site" },
     { label: "Report Date", field: "reportDate", placeholder: "Report date", inputType: "date" },
     { label: "Customer P.O. Ref", field: "customerPoRef", placeholder: "P.O. reference" },
-    { label: "Ref No.", field: "refNo", placeholder: "XXXXXXX" },
-    { label: "Job Card No. *", field: "jobCardNo", placeholder: "05", icon: Hash },
-    { label: "Date *", field: "date", inputType: "date", icon: Calendar },
-    { label: "Purpose of Visit *", type: "serviceType" },
-    { label: "Breakdown Call Type *", type: "breakdownCallType" },
-    { label: "Customer Code", field: "customerCode", placeholder: "Code" },
-    { label: "Attention Of", field: "attentionOf", placeholder: "Contact person", icon: User, helper: "Customer's main point of contact for this report" },
+    { label: "Ref No.", field: "refNo", placeholder: "XXXXXXX", required: true },
+    { label: "Job Card No.", field: "jobCardNo", placeholder: "05", icon: Hash, required: true },
+    { label: "Date", field: "date", inputType: "date", icon: Calendar, required: true },
+    { label: "Purpose of Visit", type: "serviceType", required: true },
+    { label: "Breakdown Call Type", type: "breakdownCallType", required: true },
+    { label: "Customer Code", field: "customerCode", placeholder: "Code", required: true },
+    { label: "Attention Of", field: "attentionOf", placeholder: "Contact person", icon: User, helper: "Customer's main point of contact for this report", required: true },
     { label: "Email", field: "email", placeholder: "email@example.com", icon: Mail, inputType: "email" },
-    { label: "Contact No.", field: "contactNo", placeholder: "+971-XX-XXXXXXX", icon: Phone },
+    { label: "Contact No.", field: "contactNo", placeholder: "+971-XX-XXXXXXX", icon: Phone, required: true },
     { label: "Site Contact / Representative", field: "siteContact", placeholder: "Representative", helper: "Person present at the site during this visit" },
-    { label: "Service Engineer *", type: "engineerName", helper: "Our technician assigned to this job" },
-    { label: "Sales Area *", type: "salesArea" },
-    { label: "Manager Name", type: "managerName" },
+    { label: "Service Engineer", type: "engineerName", helper: "Our technician assigned to this job", required: true },
+    { label: "Sales Area", type: "salesArea", required: true },
+    { label: "Manager Name", type: "managerName", required: true },
   ];
 
   const visibleFields = fields.filter((f) => f.type !== "breakdownCallType" || serviceType === "breakdown_call");
@@ -138,7 +176,7 @@ const CustomerInfoSection = ({
           if (f.type === "breakdownCallType") {
             return (
               <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
-                <label className="field-label">{f.label}</label>
+                <FieldLabel label={f.label} required={f.required} />
                 <Select value={breakdownCallType} onValueChange={(v) => onBreakdownCallTypeChange(v as BreakdownCallType)}>
                   <SelectTrigger className={inputClass}>
                     <SelectValue placeholder="Select breakdown call type" />
@@ -154,8 +192,22 @@ const CustomerInfoSection = ({
 
           return (
             <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
-              <label className="field-label">{f.label}</label>
-              {f.field === "customerName" ? (
+              <FieldLabel label={f.label} required={f.required} />
+              {f.type === "timeSelect" ? (
+                <Select
+                  value={(data[f.field as keyof CustomerInfo] as string) || ""}
+                  onValueChange={(v) => update(f.field as keyof CustomerInfo, v)}
+                >
+                  <SelectTrigger className={inputClass}>
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {TIME_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : f.field === "customerName" ? (
                 <div className="relative">
                   <Input className={inputClass} placeholder={f.placeholder} value={data.customerName} onChange={(e) => { setCustomerQuery(e.target.value); update("customerName", e.target.value); }} onFocus={() => customerMatches.length > 0 && setShowCustomerMatches(true)} />
                   {showCustomerMatches && customerMatches.length > 0 && <div className="absolute left-0 right-0 top-full z-20 max-h-60 overflow-auto rounded-lg border bg-background shadow-lg">

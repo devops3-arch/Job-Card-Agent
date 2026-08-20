@@ -456,9 +456,17 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       toast.error("Attention Of is required"); 
       return false; 
     }
-    if (!customerInfo.contactNo?.trim()) { 
-      toast.error("Contact No is required"); 
-      return false; 
+    if (!customerInfo.contactNo?.trim()) {
+      toast.error("Contact No is required");
+      return false;
+    }
+    if (!customerInfo.timeIn?.trim()) {
+      toast.error("Time IN is required");
+      return false;
+    }
+    if (!customerInfo.timeOut?.trim()) {
+      toast.error("Time OUT is required");
+      return false;
     }
     if (!customerInfo.engineerName?.trim()) { 
       toast.error("Service Engineer is required"); 

@@ -159,6 +159,12 @@
     letter-spacing: 0.1em;
   }
 
+  /* Compulsory fields read heavier and darker than optional ones, so the ones the
+     form will refuse to submit without are obvious before you try. */
+  .field-label-required {
+    @apply font-bold text-foreground;
+  }
+
   .status-badge-done {
     @apply text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-300;
     background: hsl(var(--success) / 0.12);
