@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiJob } from "@/types/jobCard";
+import JobStatusBadge from "@/components/JobStatusBadge";
 import { apiFetch } from "@/lib/api";
 import { isApproved, isOpen } from "@/lib/jobStatus";
 import { CheckCircle2, Clock, FileText, Activity, AlertTriangle } from "lucide-react";
-import { Badge } from "./ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileJobCard } from "./MobileJobCard";
@@ -18,20 +18,6 @@ const STAT_ANIMATION = {
     })
 };
 
-const getStatusBadge = (status: string) => {
-    const s = (status ?? "").toUpperCase();
-    if (!s || s === "DRAFT")
-        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Draft</Badge>;
-    if (s === "WAITING_PRICING" || s === "PENDING_APPROVAL" || s.includes("SUBMIT") || s.includes("REVIEW") || s.includes("PEND"))
-        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Pending Approval</Badge>;
-    if (s === "APPROVED" || s.includes("APPROV"))
-        return <Badge className="bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Approved</Badge>;
-    if (s === "REJECTED" || s.includes("REJECT"))
-        return <Badge className="bg-red-50/80 text-red-700 border border-red-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Rejected</Badge>;
-    if (s === "CLOSED")
-        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Closed</Badge>;
-    return <Badge variant="outline" className="rounded-full shadow-sm">{status}</Badge>;
-};
 
 // The /jobs call normally returns in well under a second; this ceiling only
 // exists so a hung request eventually surfaces an error instead of spinning.
@@ -286,7 +272,7 @@ const ManagerPortal = () => {
                                         <p className="font-semibold text-slate-800">{job.customer_name || "Unknown"}</p>
                                         <p className="text-xs text-slate-500 mt-0.5">{job.engineer_name || "Unassigned"}</p>
                                     </div>
-                                    {getStatusBadge(job.status)}
+                                    <JobStatusBadge status={job.status} />
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-slate-600 mb-4">
                                     <Clock size={13} className="text-slate-400" />
@@ -361,7 +347,7 @@ const ManagerPortal = () => {
                                                     {job.job_date || job.date || "N/A"}
                                                 </div>
                                             </td>
-                                            <td className="p-4">{getStatusBadge(job.status)}</td>
+                                            <td className="p-4"><JobStatusBadge status={job.status} /></td>
                                             <td className="p-4 text-right">
                                                 <div className="flex justify-end flex-wrap gap-2">
                                                     <button

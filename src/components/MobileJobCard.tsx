@@ -1,20 +1,7 @@
-import { Badge } from "@/components/ui/badge";
+import JobStatusBadge from "@/components/JobStatusBadge";
 import type { ApiJob } from "@/types/jobCard";
 import { Clock } from "lucide-react";
 
-const getStatusBadge = (status: string) => {
-    const s = status ? status.toLowerCase() : "";
-    if (s.includes('submit')) {
-        return <Badge className="bg-blue-50/80 text-blue-700 border border-blue-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Submitted</Badge>;
-    } else if (s.includes('approve')) {
-        return <Badge className="bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Approved</Badge>;
-    } else if (s.includes('review') || s.includes('pend')) {
-        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Pending Approval</Badge>;
-    } else if (s.includes('reject')) {
-        return <Badge className="bg-red-50/80 text-red-700 border border-red-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Rejected</Badge>;
-    }
-    return <Badge variant="outline" className="rounded-full shadow-sm">{status || "Draft"}</Badge>;
-};
 
 export const MobileJobCard = ({ job, index, onApprove }: { job: ApiJob, index: number, onApprove?: (jobId: string) => void }) => (
     <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-sm mb-3">
@@ -23,7 +10,7 @@ export const MobileJobCard = ({ job, index, onApprove }: { job: ApiJob, index: n
                 <div className="font-bold text-slate-800">{job.customer_name || "Unknown"}</div>
                 <div className="text-xs text-slate-500">{job.job_card_no || `JOB-${1000 + index}`}</div>
             </div>
-            {getStatusBadge(job.status)}
+            <JobStatusBadge status={job.status} />
         </div>
         <div className="text-sm text-slate-600 mt-3 pt-3 border-t border-slate-100">
             <div className="flex items-center gap-2">

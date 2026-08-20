@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import type { ApiJob } from "@/types/jobCard";
 import { apiFetch } from "@/lib/api";
 import { isApproved, isAwaitingApproval, isSubmitted } from "@/lib/jobStatus";
+import { formatMoney } from "@/lib/money";
 import { CheckCircle2, Clock, FileText, Download, FileSpreadsheet, Trash2 } from "lucide-react";
-import { Badge } from "./ui/badge";
+import JobStatusBadge from "./JobStatusBadge";
 import JobCardForm from "./jobcard/JobCardForm";
 import DeleteJobDialog from "./jobcard/DeleteJobDialog";
 import PricingPanel from "./PricingPanel";
@@ -13,20 +14,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileJobCard } from "./MobileJobCard";
 
-const getStatusBadge = (status: string) => {
-    const s = (status ?? "").toUpperCase();
-    if (!s || s === "DRAFT")
-        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Draft</Badge>;
-    if (s === "WAITING_PRICING" || s === "PENDING_APPROVAL" || s.includes("SUBMIT") || s.includes("REVIEW") || s.includes("PEND"))
-        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Pending Approval</Badge>;
-    if (s === "APPROVED" || s.includes("APPROV"))
-        return <Badge className="bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Approved</Badge>;
-    if (s === "REJECTED" || s.includes("REJECT"))
-        return <Badge className="bg-red-50/80 text-red-700 border border-red-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Rejected</Badge>;
-    if (s === "CLOSED")
-        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Closed</Badge>;
-    return <Badge variant="outline" className="rounded-full shadow-sm">{status}</Badge>;
-};
 
 const STAT_ANIMATION = {
     hidden: { opacity: 0, y: 20 },
@@ -309,8 +296,8 @@ const DashboardContent = () => {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4.5 text-slate-500 font-medium">{job.job_date || "—"}</td>
-                                                <td className="px-6 py-4.5">{getStatusBadge(job.status)}</td>
-                                                <td className="px-6 py-4.5 text-slate-900 font-bold text-right">{job.grand_total ? (typeof job.grand_total === 'number' ? `₹${job.grand_total.toFixed(2)}` : job.grand_total) : "—"}</td>
+                                                <td className="px-6 py-4.5"><JobStatusBadge status={job.status} /></td>
+                                                <td className="px-6 py-4.5 text-slate-900 font-bold text-right">{formatMoney(job.grand_total)}</td>
                                                 <td className="px-6 py-4.5 text-right">
                                                     <div className="flex items-center justify-end gap-2">
                                                         <button

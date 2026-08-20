@@ -2,6 +2,8 @@ import jsPDF from "jspdf";
 import autoTable, { RowInput } from "jspdf-autotable";
 import { ApiJob, JobCardData } from "@/types/jobCard";
 import { computePricingSummary } from "@/lib/pricing";
+import { formatStatus } from "@/lib/jobStatus";
+import { CURRENCY, formatAmount, NOT_PRICED } from "@/lib/money";
 
 /**
  * jspdf-autotable hangs the geometry of the table it just drew off the jsPDF
@@ -127,14 +129,14 @@ export async function generateGlobalPDF(jobs: ApiJob[]) {
 
     autoTable(doc, {
         startY: 48,
-        head: [['Job #', 'Customer', 'Technician', 'Date', 'Status', 'Total']],
+        head: [['Job #', 'Customer', 'Technician', 'Date', 'Status', `Total (${CURRENCY})`]],
         body: jobs.map(job => [
             job.job_card_no,
             job.customer_name,
             job.engineer_name,
             job.job_date,
-            job.status || 'New',
-            job.grand_total || 'N/A'
+            formatStatus(job.status),
+            job.grand_total ? formatAmount(job.grand_total) : NOT_PRICED
         ]),
         theme: 'grid',
         tableWidth: pageWidth - 28,
@@ -354,7 +356,7 @@ export async function generatePDF(data: JobCardData) {
     margin: { left: 14 },
     styles: { fontSize: 9.5, cellPadding: { top: 1.6, right: 1.6, bottom: 1.6, left: 1.6 }, lineColor: [0, 0, 0], lineWidth: 0.2, textColor: [0, 0, 0], valign: "middle" },
     headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: "bold", halign: "center" },
-    head: [["SN", "ITEM DESCRIPTION", "PART NUMBER", "QTY", "UNIT PRICE\n(DHS)", "TOTAL PRICE\n(DHS)"]],
+    head: [["SN", "ITEM DESCRIPTION", "PART NUMBER", "QTY", `UNIT PRICE\n(${CURRENCY})`, `TOTAL PRICE\n(${CURRENCY})`]],
     body: partsBody,
     columnStyles: {
       0: { cellWidth: 15.5, halign: "center" },
