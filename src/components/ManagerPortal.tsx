@@ -116,7 +116,7 @@ const ManagerPortal = () => {
         { title: "Total Jobs", value: visibleJobs.length.toString(), icon: <FileText className="text-blue-500" size={22} />, gradient: "from-blue-500/20 to-indigo-500/5", border: "border-blue-200/50" }
     ];
 
-    const updateJobStatus = (jobId: string, status: 'APPROVED' | 'REJECTED') => {
+    const updateJobStatus = (jobId: number | string, status: 'APPROVED' | 'REJECTED') => {
         apiFetch(`/jobs/${jobId}/status`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -142,7 +142,7 @@ const ManagerPortal = () => {
         });
     };
 
-    const approveJob = (jobId: string) => {
+    const approveJob = (jobId: number | string) => {
         // Fast Approve API Call
         apiFetch(`/jobs/${jobId}/status`, {
             method: 'PUT',

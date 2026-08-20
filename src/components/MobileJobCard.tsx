@@ -1,9 +1,9 @@
 import JobStatusBadge from "@/components/JobStatusBadge";
-import type { ApiJob } from "@/types/jobCard";
+import { parseJobData, type ApiJob } from "@/types/jobCard";
 import { Clock } from "lucide-react";
 
 
-export const MobileJobCard = ({ job, index, onApprove }: { job: ApiJob, index: number, onApprove?: (jobId: string) => void }) => (
+export const MobileJobCard = ({ job, index, onApprove }: { job: ApiJob, index: number, onApprove?: (jobId: number | string) => void }) => (
     <div className="bg-white p-4 rounded-lg border border-slate-200/80 shadow-sm mb-3">
         <div className="flex justify-between items-start mb-2">
             <div>
@@ -21,7 +21,7 @@ export const MobileJobCard = ({ job, index, onApprove }: { job: ApiJob, index: n
                 Assigned to: {job.engineer_name || "Unassigned"}
             </div>
             <div className="mt-1 text-xs text-slate-500">
-                Manager: {job.manager_name || job.managerName || job.job_data?.manager_name || "Unassigned"}
+                Manager: {job.manager_name || job.managerName || parseJobData(job.job_data).manager_name || "Unassigned"}
             </div>
         </div>
         {onApprove && (

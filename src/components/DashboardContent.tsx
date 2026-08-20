@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ApiJob } from "@/types/jobCard";
+import { parseJobData, type ApiJob } from "@/types/jobCard";
 import { apiFetch } from "@/lib/api";
 import { isApproved, isAwaitingApproval, isSubmitted } from "@/lib/jobStatus";
 import { formatMoney } from "@/lib/money";
@@ -35,8 +35,8 @@ const DashboardContent = () => {
     const userId = user?.id;
     const userName = user?.name || user?.fullName || "";
 
-    const getManagerName = (job: ApiJob) => job.manager_name || job.managerName || job.job_data?.manager_name || "—";
-    const getEngineerName = (job: ApiJob) => job.engineer_name || job.engineerName || job.job_data?.engineer_name || "—";
+    const getManagerName = (job: ApiJob) => job.manager_name || job.managerName || parseJobData(job.job_data).manager_name || "—";
+    const getEngineerName = (job: ApiJob) => job.engineer_name || job.engineerName || parseJobData(job.job_data).engineer_name || "—";
 
     useEffect(() => {
         const fetchJobs = () => {

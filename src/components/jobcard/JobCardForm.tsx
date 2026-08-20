@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, type ReactNode } from "react";
 import type { ApiJob, ApiPart, ApiLabor, ApiErrorDetail } from "@/types/jobCard";
 import type { Dispatch, SetStateAction } from "react";
 import { apiFetch } from "@/lib/api";
+import { normalizeApiError } from "@/lib/apiError";
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap, Plus, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -25,20 +26,6 @@ import type { JobCardData, CustomerInfo, BreakdownCallType, ServiceType, Checkli
 interface UserOption {
   id: number;
   name: string;
-}
-
-// Safely extract a readable string from any backend error shape.
-function normalizeApiError(data: unknown): string {
-  const err = data?.error;
-  if (typeof err === "string") return err;
-  if (typeof data?.message === "string") return data.message;
-  if (typeof err?.message === "string") return err.message;
-  if (typeof err?.code === "string") return err.code;
-  if (typeof err?.details === "string") return err.details;
-  if (Array.isArray(err?.details)) {
-    return err.details.map((d: ApiErrorDetail) => d?.message || String(d)).join(", ");
-  }
-  return "Failed to save job";
 }
 
 // Strip undefined values so JSON.stringify doesn't produce nulls for missing fields.
@@ -817,7 +804,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
 
         if (!response.ok) {
           if (resData?.error?.details) console.error("Validation details:", resData.error.details);
-          toast.error(normalizeApiError(resData));
+          toast.error(normalizeApiError(resData, "Failed to save job"));
           return;
         }
 
@@ -834,7 +821,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
 
         if (!response.ok) {
           if (resData?.error?.details) console.error("Validation details:", resData.error.details);
-          toast.error(normalizeApiError(resData));
+          toast.error(normalizeApiError(resData, "Failed to save job"));
           return;
         }
       }

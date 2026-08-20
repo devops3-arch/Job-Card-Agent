@@ -91,10 +91,9 @@ const Index = () => {
                     ) : currentRole === 'manager' ? (
                         <ManagerPortal />
                     ) : (
-                        <DashboardContent
-                            currentRole={currentRole}
-                            setCurrentRole={handleRoleChange}
-                        />
+                        // DashboardContent takes no props; currentRole and
+                        // setCurrentRole were being passed here and silently ignored.
+                        <DashboardContent />
                     )}
                 </main>
             </div>

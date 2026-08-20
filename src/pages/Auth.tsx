@@ -20,19 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-
-// Safely extract a readable string from any backend error shape.
-function normalizeAuthError(data: unknown): string {
-  const err = data?.error;
-  if (typeof err === "string") return err;
-  if (typeof data?.message === "string") return data.message;
-  if (typeof err?.message === "string") return err.message;
-  if (typeof err?.code === "string") return err.code;
-  if (Array.isArray(err?.details))
-    return err.details.map((d: ApiErrorDetail) => d?.message || String(d)).join(", ");
-  if (typeof err?.details === "string") return err.details;
-  return "Authentication failed";
-}
+import { normalizeApiError } from "@/lib/apiError";
 
 type AuthMode = "signin" | "signup";
 
@@ -114,7 +102,7 @@ const Auth = () => {
         localStorage.setItem("user", JSON.stringify(user));
         window.location.href = "/";
       } else {
-        setErrors({ submit: normalizeAuthError(data) });
+        setErrors({ submit: normalizeApiError(data, "Authentication failed") });
       }
     } catch {
       setErrors({ submit: "Network error. Please try again." });

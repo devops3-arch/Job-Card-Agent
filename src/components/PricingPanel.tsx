@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import { Loader2, CheckCircle2, Package, Wrench, FileText, FileSpreadsheet, Pencil } from "lucide-react";
 import { generatePDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
-import { SERVICE_CHARGE_MAP } from "@/types/jobCard";
-import type { JobCardData, ApiJob, ApiErrorDetail, ServiceType } from "@/types/jobCard";
+import { SERVICE_CHARGE_MAP, toSalesArea, toBreakdownCallType } from "@/types/jobCard";
+import type { JobCardData, ApiJob, ApiErrorDetail, ServiceType, JobData } from "@/types/jobCard";
 
 interface Part {
     id: number;
@@ -76,7 +76,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
     };
 
     // job_data is JSONB but can arrive as a string depending on the driver.
-    const storedJson: Record<string, unknown> = (() => {
+    const storedJson: JobData = (() => {
         try {
             return (typeof job?.job_data === "string" ? JSON.parse(job.job_data) : job?.job_data) || {};
         } catch {
@@ -136,16 +136,43 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                 attentionOf:  job?.attention_of || "",
                 email:        job?.email || "",
                 contactNo:    job?.contact_no || "",
-                salesArea:    job?.sales_area || "",
+                salesArea:    toSalesArea(job?.sales_area),
                 engineerName: job?.engineer_name || "",
                 equipmentModel: job?.equipment_model || storedJson.equipment_model || "",
                 equipmentBrandDescription: job?.equipment_brand_description || storedJson.equipment_brand_description || "",
                 equipmentPartNo: job?.equipment_part_no || storedJson.equipment_part_no || "",
                 equipmentSerialNo: job?.equipment_serial_no || storedJson.equipment_serial_no || "",
                 equipmentYear: job?.equipment_year || storedJson.equipment_year || "",
+                // The field service report columns. These were omitted entirely, so a
+                // PDF or Excel exported from this screen lost the site visit and
+                // equipment detail that the engineer had recorded on the job.
+                customerLocation: job?.customer_location || "",
+                siteContact: job?.site_contact || "",
+                timeIn: job?.time_in || "",
+                timeOut: job?.time_out || "",
+                reportDate: job?.report_date || "",
+                customerPoRef: job?.customer_po_ref || "",
+                complaintIssueDescription: job?.complaint_issue_description || "",
+                customerEquipmentId: job?.customer_equipment_id || "",
+                equipmentType: job?.equipment_type || "",
+                meterReading: job?.meter_reading != null ? String(job.meter_reading) : "",
+                capacityRating: job?.capacity_rating || "",
+                controllerPanelModel: job?.controller_panel_model || "",
+                alarmFaultCode: job?.alarm_fault_code || "",
+                lastServiceDate: job?.last_service_date || "",
+                lastServiceHours: job?.last_service_hours != null ? String(job.last_service_hours) : "",
+                oilRefrigerantFuelType: job?.oil_refrigerant_fuel_type || "",
+                dutyCycle: job?.duty_cycle || "",
+                warrantyStatus: job?.warranty_status || "",
+                warrantyClaimRef: job?.warranty_claim_ref || "",
+                previousJobRef: job?.previous_job_ref || "",
+                nameplatePhotoRef: storedJson.nameplatePhotoRef || "",
+                vibrationReportRef: storedJson.vibrationReportRef || "",
             },
             serviceType:         (job?.service_type || "service_contract") as ServiceType,
-            breakdownCallType:   job?.service_type === "breakdown_call" ? (storedJson.breakdown_call_type || storedJson.coverage_type) : undefined,
+            breakdownCallType:   job?.service_type === "breakdown_call"
+                ? toBreakdownCallType(storedJson.breakdown_call_type ?? storedJson.coverage_type)
+                : undefined,
             compressorChecklist,
             dryerChecklist,
             parts: parts.map(p => {
