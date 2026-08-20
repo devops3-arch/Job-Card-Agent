@@ -3,30 +3,15 @@ import type { ApiJob } from "@/types/jobCard";
 import { apiFetch } from "@/lib/api";
 import { isApproved, isAwaitingApproval, isSubmitted } from "@/lib/jobStatus";
 import { CheckCircle2, Clock, FileText, Download, FileSpreadsheet } from "lucide-react";
-import { Badge } from "./ui/badge";
 import JobCardForm from "./jobcard/JobCardForm";
+import JobCardGrid from "./jobcard/JobCardGrid";
 import PricingPanel from "./PricingPanel";
 import { generateGlobalPDF } from "@/utils/exportPdf";
 import { generateExcel } from "@/utils/exportExcel";
 import * as XLSX from "xlsx-js-style";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileJobCard } from "./MobileJobCard";
-
-const getStatusBadge = (status: string) => {
-    const s = (status ?? "").toUpperCase();
-    if (!s || s === "DRAFT")
-        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Draft</Badge>;
-    if (s === "WAITING_PRICING" || s === "PENDING_APPROVAL" || s.includes("SUBMIT") || s.includes("REVIEW") || s.includes("PEND"))
-        return <Badge className="bg-amber-50/80 text-amber-700 border border-amber-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Pending Approval</Badge>;
-    if (s === "APPROVED" || s.includes("APPROV"))
-        return <Badge className="bg-emerald-50/80 text-emerald-700 border border-emerald-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Approved</Badge>;
-    if (s === "REJECTED" || s.includes("REJECT"))
-        return <Badge className="bg-red-50/80 text-red-700 border border-red-200/60 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Rejected</Badge>;
-    if (s === "CLOSED")
-        return <Badge className="bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-0.5 text-xs font-semibold shadow-sm">Closed</Badge>;
-    return <Badge variant="outline" className="rounded-full shadow-sm">{status}</Badge>;
-};
 
 const STAT_ANIMATION = {
     hidden: { opacity: 0, y: 20 },
@@ -249,76 +234,13 @@ const DashboardContent = () => {
                         ))}
                     </div>
 
-                    <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4, duration: 0.5 }}
-                        className="bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/60 shadow-[0_2px_10px_rgb(0,0,0,0.02)] overflow-hidden mt-8"
-                    >
-                        <div className="p-6 border-b border-slate-100 bg-white/50">
-                            <h2 className="text-lg font-bold text-slate-800">Recent Jobs</h2>
-                        </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-50/50 text-slate-500 font-semibold text-[0.8rem] uppercase tracking-wider">
-                                    <tr>
-                                        <th className="px-6 py-4 whitespace-nowrap">Job #</th>
-                                        <th className="px-6 py-4">Customer</th>
-                                        <th className="px-6 py-4">Technician</th>
-                                        <th className="px-6 py-4">Manager</th>
-                                        <th className="px-6 py-4">Date</th>
-                                        <th className="px-6 py-4">Status</th>
-                                        <th className="px-6 py-4 text-right">Total</th>
-                                        <th className="px-6 py-4"></th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100/80 bg-white">
-                                    <AnimatePresence>
-                                        {visibleJobs.map((job, idx) => (
-                                            <motion.tr 
-                                                key={job.id || idx}
-                                                initial={{ opacity: 0, x: -10 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                transition={{ delay: 0.5 + (idx * 0.05) }}
-                                                className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
-                                                onClick={() => handleEdit(job)}
-                                            >
-                                                <td className="px-6 py-4.5 font-bold text-slate-900">{job.job_card_no || job.id}</td>
-                                                <td className="px-6 py-4.5 text-slate-600 font-medium">{job.customer_name}</td>
-                                                <td className="px-6 py-4.5 text-slate-600">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                                                            {(getEngineerName(job) || "—").substring(0,2).toUpperCase()}
-                                                        </div>
-                                                        {getEngineerName(job) || "—"}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4.5 text-slate-600">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                                                            {(getManagerName(job) || "—").substring(0,2).toUpperCase()}
-                                                        </div>
-                                                        {getManagerName(job) || "—"}
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4.5 text-slate-500 font-medium">{job.job_date || "—"}</td>
-                                                <td className="px-6 py-4.5">{getStatusBadge(job.status)}</td>
-                                                <td className="px-6 py-4.5 text-slate-900 font-bold text-right">{job.grand_total ? (typeof job.grand_total === 'number' ? `₹${job.grand_total.toFixed(2)}` : job.grand_total) : "—"}</td>
-                                                <td className="px-6 py-4.5 text-right">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleEdit(job); }}
-                                                        className="text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100 mr-2"
-                                                    >
-                                                        Review Report
-                                                    </button>
-                                                </td>
-                                            </motion.tr>
-                                        ))}
-                                    </AnimatePresence>
-                                </tbody>
-                            </table>
-                        </div>
-                    </motion.div>
+                    <JobCardGrid
+                        jobs={visibleJobs}
+                        onOpen={handleEdit}
+                        getEngineerName={getEngineerName}
+                        getManagerName={getManagerName}
+                        actionLabel={userRole === "manager" ? "Review report" : "Open job card"}
+                    />
         </div>
     );
 };
