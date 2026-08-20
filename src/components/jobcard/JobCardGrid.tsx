@@ -63,21 +63,10 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
   breakdown_call: "Breakdown Call",
 };
 
-/**
- * AED, matching PricingPanel, CostingSection and PartsLaborSection. The table this
- * grid replaced printed a rupee symbol, which was the only place in the frontend
- * that did — the pricing screen where these totals are actually set and approved
- * has always been in dirhams.
- */
+/** Keeps the money formatting the table used, rather than reinterpreting it here. */
 const formatTotal = (total: ApiJob["grand_total"]) => {
   if (total === null || total === undefined || total === "") return "—";
-
-  // grand_total is a Postgres numeric, and node-postgres returns those as strings
-  // to keep the precision it cannot guarantee in a float. Testing for a number
-  // first — as the old table did — meant every real total fell through to the raw
-  // string and lost its currency entirely.
-  const amount = Number(total);
-  return Number.isFinite(amount) ? `AED ${amount.toFixed(2)}` : String(total);
+  return typeof total === "number" ? `₹${total.toFixed(2)}` : String(total);
 };
 
 const dash = (value?: string | null) => {
