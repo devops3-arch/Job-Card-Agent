@@ -23,11 +23,26 @@ const fieldVariants = {
 
 const inputClass = "h-11 rounded-xl border-border/60 bg-background hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all duration-300";
 
+/** The house brand. The model field is fixed to it and cannot be typed into. */
+export const DEFAULT_EQUIPMENT_MODEL = "Kaeser";
+
 const EquipmentDetailsSection = ({ data, onChange }: Props) => {
   const [equipmentSuggestions, setEquipmentSuggestions] = useState<typeof equipmentMasterList>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [brands, setBrands] = useState<Array<{ id: number; name: string }>>([]);
   useEffect(() => { apiFetch("/api/brands").then((r) => r.json()).then((r) => setBrands(Array.isArray(r.data) ? r.data : Array.isArray(r) ? r : [])).catch(() => setBrands([])); }, []);
+
+  // Seed the read-only model into state so what is displayed is what gets
+  // validated and saved. Without this the field showed a value the user could not
+  // edit while validateEquipment rejected it as empty, which made the form
+  // unsubmittable. Also repairs an existing job card loaded with no model.
+  // Guarded on the value, so the write happens once and does not loop.
+  useEffect(() => {
+    if (!data.equipmentModel?.trim()) {
+      onChange({ ...data, equipmentModel: DEFAULT_EQUIPMENT_MODEL });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.equipmentModel]);
 
   const handleBrandDescriptionChange = (value: string) => {
     onChange({ ...data, equipmentBrandDescription: value });
@@ -80,7 +95,14 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-4">
         {fields.map((field, index) => {
-          // Equipment Model field - read-only
+          // Equipment Model — fixed to the house brand and read-only, so it renders
+          // from state rather than from a literal. It used to render the string
+          // "Kaeser" while customerInfo.equipmentModel stayed empty, and
+          // validateEquipment reads the state: the form reported "Equipment Model
+          // is required" for a field showing a value that nobody could edit, so a
+          // job card could not be submitted at all unless the engineer happened to
+          // pick from the equipment suggestion list, which is the only other code
+          // that sets it.
           if (field.field === "equipmentModel") {
             return (
               <motion.div key={field.field} custom={index} variants={fieldVariants} initial="hidden" animate="visible">
@@ -88,7 +110,7 @@ const EquipmentDetailsSection = ({ data, onChange }: Props) => {
                 <Input
                   className={inputClass}
                   placeholder={field.placeholder}
-                  value="Kaeser"
+                  value={data.equipmentModel || DEFAULT_EQUIPMENT_MODEL}
                   readOnly
                 />
               </motion.div>
