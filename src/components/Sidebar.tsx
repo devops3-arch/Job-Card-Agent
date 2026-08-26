@@ -1,5 +1,6 @@
 import { LayoutDashboard, PlusCircle, Users, UserCog, LogOut, Hexagon } from "lucide-react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 
 interface SidebarProps {
     currentRole?: string;
@@ -22,6 +23,7 @@ const handleSignOut = () => {
 };
 
 const Sidebar = ({ currentRole = 'dashboard', onRoleChange, isMobile = false }: SidebarProps) => {
+    const navigate = useNavigate();
     const user = getUser();
     const userRole = user?.role || '';
     const displayName = user?.fullName || user?.name || user?.email?.split("@")[0] || "User";
@@ -33,7 +35,6 @@ const Sidebar = ({ currentRole = 'dashboard', onRoleChange, isMobile = false }: 
         { role: 'dashboard' as const, icon: LayoutDashboard, label: 'Dashboard', visible: true },
         { role: 'engineer' as const, icon: PlusCircle, label: 'New Job', visible: userRole === 'engineer' },
         { role: 'manager' as const, icon: UserCog, label: 'Assigned Job Cards', visible: userRole === 'manager' },
-        { role: 'users' as const, icon: Users, label: 'Users', visible: userRole === 'manager' },
     ].filter(item => item.visible);
 
     return (
@@ -47,7 +48,7 @@ const Sidebar = ({ currentRole = 'dashboard', onRoleChange, isMobile = false }: 
                 <div className="w-9 h-9 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
                     <Hexagon size={20} className="text-white fill-white/20" />
                 </div>
-                <h1 className="text-xl font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300">JobFlow Pro</h1>
+                <h1 className="text-xl font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300">Job Card</h1>
             </div>
 
             {/* Navigation */}
@@ -68,6 +69,15 @@ const Sidebar = ({ currentRole = 'dashboard', onRoleChange, isMobile = false }: 
                         {label}
                     </button>
                 ))}
+                {userRole === 'admin' && (
+                    <button
+                        onClick={() => navigate('/admin/users')}
+                        className="relative flex w-full items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-all duration-300 cursor-pointer group text-slate-400 hover:text-white"
+                    >
+                        <Users size={20} className="text-slate-400 group-hover:-translate-y-0.5 transition-transform" />
+                        Admin Users
+                    </button>
+                )}
             </nav>
 
             {/* User profile + Sign Out */}

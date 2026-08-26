@@ -1,9 +1,11 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Building2, Calendar, Hash, Mail, Phone, User } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BreakdownCallType, CustomerInfo, ServiceType, SalesArea } from "@/types/jobCard";
 import { sampleCustomers } from "@/data/defaultChecklist";
+import { apiFetch } from "@/lib/api";
+import { useEffect, useState } from "react";
 
 interface UserOption {
   id: number;
@@ -75,22 +77,44 @@ const CustomerInfoSection = ({
   onManagerChange,
   onEngineerChange,
 }: Props) => {
+  const [customerQuery, setCustomerQuery] = useState(data.customerName);
+  const [customerMatches, setCustomerMatches] = useState<Array<{ id: number; name: string; code?: string; email?: string; contact?: string }>>([]);
+  const [showCustomerMatches, setShowCustomerMatches] = useState(false);
+  useEffect(() => {
+    if (customerQuery.trim().length < 2) { setCustomerMatches([]); return; }
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await apiFetch(`/api/customers/search?q=${encodeURIComponent(customerQuery.trim())}`);
+        const result = await response.json();
+        setCustomerMatches(Array.isArray(result.data) ? result.data : Array.isArray(result) ? result : []);
+        setShowCustomerMatches(true);
+      } catch { setCustomerMatches([]); }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [customerQuery]);
   const update = (field: keyof CustomerInfo, value: string) => {
     onChange({ ...data, [field]: value });
   };
 
   const fields = [
-    { label: "Customer Name *", field: "customerName", placeholder: "Enter customer name" },
+    { label: "Customer Name *", field: "customerName", placeholder: "Search customer name" },
+    { label: "Customer Location / Site", field: "customerLocation", placeholder: "Site / location" },
+    { label: "Site Contact / Representative", field: "siteContact", placeholder: "Representative" },
+    { label: "Time IN", field: "timeIn", placeholder: "HH:MM", inputType: "time" },
+    { label: "Time OUT", field: "timeOut", placeholder: "HH:MM", inputType: "time" },
+    { label: "Report Date", field: "reportDate", placeholder: "Report date", inputType: "date" },
+    { label: "Customer P.O. Ref", field: "customerPoRef", placeholder: "P.O. reference" },
     { label: "Ref No.", field: "refNo", placeholder: "XXXXXXX" },
     { label: "Job Card No. *", field: "jobCardNo", placeholder: "05", icon: Hash },
     { label: "Date *", field: "date", inputType: "date", icon: Calendar },
     { label: "Purpose of Visit *", type: "serviceType" },
     { label: "Breakdown Call Type *", type: "breakdownCallType" },
     { label: "Customer Code", field: "customerCode", placeholder: "Code" },
-    { label: "Attention Of", field: "attentionOf", placeholder: "Contact person", icon: User },
+    { label: "Attention Of", field: "attentionOf", placeholder: "Contact person", icon: User, helper: "Customer's main point of contact for this report" },
     { label: "Email", field: "email", placeholder: "email@example.com", icon: Mail, inputType: "email" },
     { label: "Contact No.", field: "contactNo", placeholder: "+971-XX-XXXXXXX", icon: Phone },
-    { label: "Engineer Name *", type: "engineerName" },
+    { label: "Site Contact / Representative", field: "siteContact", placeholder: "Representative", helper: "Person present at the site during this visit" },
+    { label: "Service Engineer *", type: "engineerName", helper: "Our technician assigned to this job" },
     { label: "Sales Area *", type: "salesArea" },
     { label: "Manager Name", type: "managerName" },
   ];
@@ -128,7 +152,14 @@ const CustomerInfoSection = ({
           return (
             <motion.div key={f.label} custom={i} variants={fieldVariants} initial="hidden" animate="visible">
               <label className="field-label">{f.label}</label>
-              {f.type === "select" ? (
+              {f.field === "customerName" ? (
+                <div className="relative">
+                  <Input className={inputClass} placeholder={f.placeholder} value={data.customerName} onChange={(e) => { setCustomerQuery(e.target.value); update("customerName", e.target.value); }} onFocus={() => customerMatches.length > 0 && setShowCustomerMatches(true)} />
+                  {showCustomerMatches && customerMatches.length > 0 && <div className="absolute left-0 right-0 top-full z-20 max-h-60 overflow-auto rounded-lg border bg-background shadow-lg">
+                    {customerMatches.map((customer) => <button type="button" key={customer.id} className="block min-h-11 w-full border-b px-3 py-2 text-left hover:bg-muted" onMouseDown={(e) => e.preventDefault()} onClick={() => { update("customerName", customer.name); update("customerCode", customer.code || ""); update("email", customer.email || ""); update("contactNo", customer.contact || ""); setCustomerQuery(customer.name); setShowCustomerMatches(false); }}>{customer.name}{customer.code ? ` (${customer.code})` : ""}</button>)}
+                  </div>}
+                </div>
+              ) : f.type === "select" ? (
                 <Select value={data.customerName} onValueChange={(v) => update("customerName", v)}>
                   <SelectTrigger className={inputClass}>
                     <SelectValue placeholder="Select customer" />
@@ -183,7 +214,7 @@ const CustomerInfoSection = ({
                       ) : engineersError ? (
                         <SelectItem value="unassigned" disabled>Failed to load engineers</SelectItem>
                       ) : engineerOptions.length === 0 ? (
-                        <SelectItem value="unassigned" disabled>No engineers found</SelectItem>
+                        <SelectItem value="unassigned" disabled>No engineers available</SelectItem>
                       ) : (
                         engineerOptions.map((engineer) => (
                           <SelectItem key={engineer.id} value={String(engineer.id)}>{engineer.name}</SelectItem>
@@ -206,7 +237,7 @@ const CustomerInfoSection = ({
                     ) : managersError ? (
                       <SelectItem value="unassigned" disabled>Failed to load managers</SelectItem>
                     ) : managerOptions.length === 0 ? (
-                      <SelectItem value="unassigned" disabled>No managers found</SelectItem>
+                      <SelectItem value="unassigned" disabled>No managers available</SelectItem>
                     ) : (
                       managerOptions.map((manager) => (
                         <SelectItem key={manager.id} value={String(manager.id)}>{manager.name}</SelectItem>
@@ -233,10 +264,17 @@ const CustomerInfoSection = ({
                   onChange={(e) => update(f.field as keyof CustomerInfo, e.target.value)}
                 />
               )}
+              {f.helper && <p className="mt-1 text-xs text-muted-foreground">{f.helper}</p>}
             </motion.div>
           );
         })}
       </div>
+      {(serviceType === "breakdown_call" || serviceType === "customer_request") && (
+        <div className="mt-4">
+          <label className="field-label">Complaint / Issue Description</label>
+          <textarea className="min-h-24 w-full rounded-xl border border-border/60 bg-background p-3" value={data.complaintIssueDescription} onChange={(e) => update("complaintIssueDescription", e.target.value)} />
+        </div>
+      )}
     </div>
   );
 };

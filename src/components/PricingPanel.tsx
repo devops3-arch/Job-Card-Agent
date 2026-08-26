@@ -283,6 +283,7 @@ const PricingPanel = ({ jobId, onClose, onApproved }: Props) => {
                                         <td className="px-6 py-4">
                                             <input
                                                 type="number"
+                                                inputMode="decimal"
                                                 min="0"
                                                 step="0.01"
                                                 placeholder="Enter price"

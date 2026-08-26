@@ -105,7 +105,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
             <span className="section-title-icon">
               <Package className="h-4 w-4 text-primary-foreground" />
             </span>
-            Parts Used
+            Parts Required
             {parts.length > 0 && (
               <motion.span
                 key={parts.length}
@@ -118,7 +118,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
             )}
           </h2>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button size="sm" onClick={addPart} className="gap-1.5 btn-primary-gradient border-0 rounded-xl px-4 text-xs font-bold">
+            <Button type="button" size="sm" onClick={addPart} className="gap-1.5 btn-primary-gradient border-0 rounded-xl px-4 text-xs font-bold">
               <Plus className="h-3.5 w-3.5" /> Add Part
             </Button>
           </motion.div>
@@ -140,7 +140,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                       className="bg-card p-4 rounded-xl border border-border/60 shadow-sm relative"
                     >
                       <Button
-                        variant="ghost" size="icon"
+                        type="button" variant="ghost" size="icon"
                         className="absolute right-2 top-2 h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg"
                         onClick={() => removePart(part.id)}
                       >
@@ -158,13 +158,13 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                         <div className={`grid gap-3 ${role === 'manager' ? 'grid-cols-3' : 'grid-cols-1'}`}>
                           <div>
                             <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Qty</label>
-                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" min={1} value={part.qty} onChange={(e) => updatePart(part.id, "qty", e.target.value === "" ? "" : Number(e.target.value))} />
+                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" inputMode="numeric" min={1} step={1} value={part.qty} onChange={(e) => updatePart(part.id, "qty", e.target.value === "" ? "" : Number(e.target.value))} />
                           </div>
                           {role === 'manager' && (
                             <>
                               <div>
                                 <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Unit Price</label>
-                                <Input className={priceInputClass(part.unitPrice)} type="number" min={0} step={0.01} placeholder="0.00" value={part.unitPrice || ""} onChange={(e) => updatePart(part.id, "unitPrice", e.target.value === "" ? 0 : Number(e.target.value))} />
+                                <Input className={priceInputClass(part.unitPrice)} type="number" inputMode="decimal" min={0} step={0.01} placeholder="0.00" value={part.unitPrice || ""} onChange={(e) => updatePart(part.id, "unitPrice", e.target.value === "" ? 0 : Number(e.target.value))} />
                               </div>
                               <div>
                                 <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Total</label>
@@ -214,14 +214,14 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                             <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" placeholder="Part number" value={part.partNumber || ""} onChange={(e) => updatePart(part.id, "partNumber", e.target.value)} />
                           </td>
                           <td className="py-2.5 px-4">
-                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" min={1} value={part.qty} onChange={(e) => updatePart(part.id, "qty", e.target.value === "" ? "" : Number(e.target.value))} />
+                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" inputMode="numeric" min={1} step={1} value={part.qty} onChange={(e) => updatePart(part.id, "qty", e.target.value === "" ? "" : Number(e.target.value))} />
                           </td>
                           {role === 'manager' && (
                             <>
                               <td className="py-2.5 px-4">
                                 <Input
                                   className={priceInputClass(part.unitPrice)}
-                                  type="number" min={0} step={0.01}
+                                  type="number" inputMode="decimal" min={0} step={0.01}
                                   placeholder="Enter price"
                                   value={part.unitPrice || ""}
                                   onChange={(e) => updatePart(part.id, "unitPrice", e.target.value === "" ? 0 : Number(e.target.value))}
@@ -234,7 +234,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                           )}
                           <td className="py-2.5 px-4">
                             <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.8 }}>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg" onClick={() => removePart(part.id)}>
+                              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg" onClick={() => removePart(part.id)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </motion.div>
@@ -257,7 +257,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
               <motion.div animate={{ y: [0, -4, 0] }} transition={{ duration: 2, repeat: Infinity }}>
                 <Package className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3 group-hover:text-primary/40 transition-colors" />
               </motion.div>
-              <p className="text-xs text-muted-foreground font-medium">No parts added yet</p>
+              <p className="text-xs text-muted-foreground font-medium">No parts required added yet</p>
               <p className="text-[0.65rem] text-muted-foreground/60 mt-1">Click to add your first part</p>
             </motion.div>
           )}
@@ -284,7 +284,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
             )}
           </h2>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button size="sm" onClick={addLabor} className="gap-1.5 btn-primary-gradient border-0 rounded-xl px-4 text-xs font-bold">
+            <Button type="button" size="sm" onClick={addLabor} className="gap-1.5 btn-primary-gradient border-0 rounded-xl px-4 text-xs font-bold">
               <Plus className="h-3.5 w-3.5" /> Add Labor
             </Button>
           </motion.div>
@@ -306,7 +306,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                       className="bg-card p-4 rounded-xl border border-border/60 shadow-sm relative"
                     >
                       <Button
-                        variant="ghost" size="icon"
+                        type="button" variant="ghost" size="icon"
                         className="absolute right-2 top-2 h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg"
                         onClick={() => removeLabor(item.id)}
                       >
@@ -320,13 +320,13 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                         <div className={`grid gap-3 ${role === 'manager' ? 'grid-cols-3' : 'grid-cols-1'}`}>
                           <div>
                             <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Hours</label>
-                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" min={0} step={0.5} value={item.hours} onChange={(e) => updateLabor(item.id, "hours", e.target.value === "" ? "" : Number(e.target.value))} />
+                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" inputMode="decimal" min={0} step={0.5} value={item.hours} onChange={(e) => updateLabor(item.id, "hours", e.target.value === "" ? "" : Number(e.target.value))} />
                           </div>
                           {role === 'manager' && (
                             <>
                               <div>
                                 <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Rate/Hr</label>
-                                <Input className={priceInputClass(item.ratePerHour)} type="number" min={0} step={0.01} placeholder="0.00" value={item.ratePerHour || ""} onChange={(e) => updateLabor(item.id, "ratePerHour", e.target.value === "" ? 0 : Number(e.target.value))} />
+                                <Input className={priceInputClass(item.ratePerHour)} type="number" inputMode="decimal" min={0} step={0.01} placeholder="0.00" value={item.ratePerHour || ""} onChange={(e) => updateLabor(item.id, "ratePerHour", e.target.value === "" ? 0 : Number(e.target.value))} />
                               </div>
                               <div>
                                 <label className="text-xs uppercase tracking-wider text-black font-black mb-1 block">Total</label>
@@ -372,14 +372,14 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                             <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" placeholder="Labor description" value={item.description} onChange={(e) => updateLabor(item.id, "description", e.target.value)} />
                           </td>
                           <td className="py-2.5 px-4">
-                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" min={0} step={0.5} value={item.hours} onChange={(e) => updateLabor(item.id, "hours", e.target.value === "" ? "" : Number(e.target.value))} />
+                            <Input className="h-10 text-sm font-bold text-black bg-white border-slate-400 border-2 rounded-lg" type="number" inputMode="decimal" min={0} step={0.5} value={item.hours} onChange={(e) => updateLabor(item.id, "hours", e.target.value === "" ? "" : Number(e.target.value))} />
                           </td>
                           {role === 'manager' && (
                             <>
                               <td className="py-2.5 px-4">
                                 <Input
                                   className={priceInputClass(item.ratePerHour)}
-                                  type="number" min={0} step={0.01}
+                                  type="number" inputMode="decimal" min={0} step={0.01}
                                   placeholder="Enter rate"
                                   value={item.ratePerHour || ""}
                                   onChange={(e) => updateLabor(item.id, "ratePerHour", e.target.value === "" ? 0 : Number(e.target.value))}
@@ -392,7 +392,7 @@ const PartsLaborSection = ({ parts, labor, onPartsChange, onLaborChange, role = 
                           )}
                           <td className="py-2.5 px-4">
                             <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.8 }}>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg" onClick={() => removeLabor(item.id)}>
+                              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10 rounded-lg" onClick={() => removeLabor(item.id)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </motion.div>

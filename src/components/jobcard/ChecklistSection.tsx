@@ -39,8 +39,8 @@ const ChecklistSection = ({ title, items, onChange, delay = 0.2 }: Props) => {
   const allDone = counts.done === total;
 
   return (
-    <div className="section-card">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+    <div className="section-card w-full">
+      <div className="sticky top-0 z-10 -mx-1 bg-background/95 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h2 className="section-title mb-0">
           <span className="section-title-icon">
             {allDone ? (
@@ -101,13 +101,13 @@ const ChecklistSection = ({ title, items, onChange, delay = 0.2 }: Props) => {
               transition={{ duration: 0.3, delay: delay + idx * 0.02 }}
               className={`p-3 rounded-lg border flex items-center gap-3 ${item.status === 'done' ? 'bg-success/5 border-success/20' : 'bg-background border-border/60'}`}
             >
-              <div className="text-muted-foreground text-xs font-mono">{String(item.id).padStart(2, '0')}</div>
+              <div className="hidden sm:block text-muted-foreground text-xs font-mono">{String(item.id).padStart(2, '0')}</div>
               <div className={`flex-1 text-sm transition-all duration-300 ${item.status === 'done' ? 'text-muted-foreground line-through' : ''}`}>
                 {item.description}
               </div>
-              <div className="w-32">
+              <div className="w-full sm:w-32">
                 <Select value={item.status} onValueChange={(v) => updateStatus(item.id, v as CheckStatus)}>
-                  <SelectTrigger className={`h-8 text-xs rounded-lg border-border/60 transition-all duration-300 ${
+                    <SelectTrigger className={`h-11 sm:h-8 w-full text-xs rounded-lg border-border/60 transition-all duration-300 ${
                     item.status === 'done' ? 'border-success/30 bg-success/10' :
                     item.status === 'pending' ? 'border-warning/30 bg-warning/10' : 'bg-background'
                   }`}>

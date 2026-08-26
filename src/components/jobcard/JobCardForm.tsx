@@ -1,8 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { apiFetch } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { FileText, FileSpreadsheet, ClipboardList, Sparkles, ChevronUp, Zap, Plus, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import FileUploadField from "./FileUploadField";
 import { Button } from "@/components/ui/button";
 import { SERVICE_CHARGE_MAP } from "@/types/jobCard";
 import { computePricingSummary } from "@/lib/pricing";
@@ -51,7 +56,20 @@ const defaultCustomerInfo: CustomerInfo = {
   equipmentPartNo: "",
   equipmentSerialNo: "",
   equipmentYear: "",
+  customerLocation: "", siteContact: "", timeIn: "", timeOut: "", reportDate: new Date().toISOString().split("T")[0], customerPoRef: "", complaintIssueDescription: "",
+  customerEquipmentId: "", equipmentType: "", meterReading: "", capacityRating: "", controllerPanelModel: "", alarmFaultCode: "", lastServiceDate: "", lastServiceHours: "", oilRefrigerantFuelType: "", dutyCycle: "", warrantyStatus: "", warrantyClaimRef: "", previousJobRef: "", nameplatePhotoRef: "", vibrationReportRef: "",
 };
+
+const inputClass = "h-11 w-full rounded-xl";
+type Issue = { description: string; symptom: string; occurrence: string; repeatFailure: boolean };
+const emptyIssue = (): Issue => ({ description: "", symptom: "", occurrence: "", repeatFailure: false });
+const Section = ({ title, children }: { title: string; children: ReactNode }) => (
+  <details open className="section-card w-full [&_summary]:sticky [&_summary]:top-0 [&_summary]:z-10 [&_summary]:bg-background/95 [&_summary]:py-2">
+    <summary className="section-title cursor-pointer list-none">{title}</summary>
+    <div className="mt-4">{children}</div>
+  </details>
+);
+const Field = ({ label, children }: { label: string; children: ReactNode }) => <label className="block space-y-1"><span className="field-label">{label}</span>{children}</label>;
 
 const sectionVariants = {
   hidden: { opacity: 0, y: 40, scale: 0.98 },
@@ -78,6 +96,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
   const [otherExpenses, setOtherExpenses] = useState(0);
   const [discountPercentage, setDiscountPercentage] = useState(0);
   const [serviceCharge, setServiceCharge] = useState(0);
+  const [customerIssues, setCustomerIssues] = useState<Issue[]>([emptyIssue()]);
+  const [operatingData, setOperatingData] = useState<Record<string, { before: string; after: string; unit: string; remarks: string }>>({});
+  const [findings, setFindings] = useState({ asFoundCondition: "", rootCauseDiagnosis: "", asLeftCondition: "", safetyPermitRef: "", nextVisitRequired: false, nextVisitNotes: "" });
+  const [evidence, setEvidence] = useState({ soundFileReference: [] as string[], dbReading: "", photosReference: [] as string[], alarmFaultPhotoReference: "", partsReplaced: "", finalTestResult: "", finalEquipmentStatus: "", quotationRequired: false, safetyCriticalIssue: false, escalatedToTime: "", internalChecklistCompleted: false, mandatoryAttachmentsVerified: false, jobReadyForInvoicing: false });
   const [managerId, setManagerId] = useState<number | null>(null);
   const [managerName, setManagerName] = useState("");
   const [engineerId, setEngineerId] = useState<number | null>(null);
@@ -94,6 +116,125 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
   const currentUserRole = currentUser?.role || '';
   const currentUserName = currentUser?.name || currentUser?.fullName || "";
   const currentUserId = currentUser?.id;
+  const isMobileForm = useIsMobile();
+  const draftKey = `jobCardDraft:${jobId ?? "new"}`;
+  const [draftAvailable, setDraftAvailable] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  const draftData = useMemo(() => ({
+    customerInfo,
+    serviceType,
+    breakdownCallType,
+    compressorChecklist,
+    dryerChecklist,
+    parts,
+    labor,
+    otherExpenses,
+    discountPercentage,
+    serviceCharge,
+    customerIssues,
+    operatingData,
+    findings,
+    evidence,
+    managerId,
+    managerName,
+    engineerId,
+  }), [
+    customerInfo,
+    serviceType,
+    breakdownCallType,
+    compressorChecklist,
+    dryerChecklist,
+    parts,
+    labor,
+    otherExpenses,
+    discountPercentage,
+    serviceCharge,
+    customerIssues,
+    operatingData,
+    findings,
+    evidence,
+    managerId,
+    managerName,
+    engineerId,
+  ]);
+
+  const restoreDraft = () => {
+    const rawDraft = localStorage.getItem(draftKey);
+    if (!rawDraft) {
+      toast.error("No saved draft found to restore.");
+      setDraftAvailable(false);
+      return;
+    }
+
+    try {
+      const saved = JSON.parse(rawDraft);
+      setCustomerInfo(saved.customerInfo || defaultCustomerInfo);
+      setServiceType(saved.serviceType || "service_contract");
+      setBreakdownCallType(saved.breakdownCallType || "");
+      setCompressorChecklist(saved.compressorChecklist || defaultCompressorChecklist);
+      setDryerChecklist(saved.dryerChecklist || defaultDryerChecklist);
+      setParts(saved.parts || []);
+      setLabor(saved.labor || []);
+      setOtherExpenses(saved.otherExpenses || 0);
+      setDiscountPercentage(saved.discountPercentage || 0);
+      setServiceCharge(saved.serviceCharge || 0);
+      setCustomerIssues(saved.customerIssues || [emptyIssue()]);
+      setOperatingData(saved.operatingData || {});
+      setFindings(saved.findings || { asFoundCondition: "", rootCauseDiagnosis: "", asLeftCondition: "", safetyPermitRef: "", nextVisitRequired: false, nextVisitNotes: "" });
+      setEvidence(saved.evidence || { soundFileReference: [], dbReading: "", photosReference: [], alarmFaultPhotoReference: "", partsReplaced: "", finalTestResult: "", finalEquipmentStatus: "", quotationRequired: false, safetyCriticalIssue: false, escalatedToTime: "", internalChecklistCompleted: false, mandatoryAttachmentsVerified: false, jobReadyForInvoicing: false });
+      setManagerId(saved.managerId ?? null);
+      setManagerName(saved.managerName || "");
+      setEngineerId(saved.engineerId ?? null);
+      setDraftAvailable(false);
+      setDraftRestored(true);
+      setDraftSavedAt(saved.savedAt || null);
+      toast.success("Draft restored successfully.");
+    } catch (err) {
+      console.error("Failed to restore draft", err);
+      toast.error("Unable to restore the saved draft.");
+    }
+  };
+
+  const discardDraft = () => {
+    localStorage.removeItem(draftKey);
+    setDraftAvailable(false);
+    setDraftSavedAt(null);
+    toast.success("Draft discarded.");
+  };
+
+  useEffect(() => {
+    const rawDraft = localStorage.getItem(draftKey);
+    if (rawDraft) {
+      try {
+        const parsed = JSON.parse(rawDraft);
+        if (parsed && parsed.savedAt) {
+          setDraftAvailable(true);
+          setDraftSavedAt(parsed.savedAt);
+        }
+      } catch (err) {
+        console.warn("Invalid draft JSON", err);
+      }
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (loadingJob) return;
+    if (!draftData) return;
+
+    const timeout = window.setTimeout(() => {
+      const payload = {
+        ...draftData,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(draftKey, JSON.stringify(payload));
+      setDraftSavedAt(payload.savedAt);
+      setDraftAvailable(false);
+    }, 10000);
+
+    return () => window.clearTimeout(timeout);
+  }, [draftData, draftKey, loadingJob]);
 
   // Load existing job data if editing
   useEffect(() => {
@@ -124,7 +265,17 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
                 equipmentPartNo: jobData.equipment_part_no || storedJson.equipment_part_no || "",
                 equipmentSerialNo: jobData.equipment_serial_no || storedJson.equipment_serial_no || "",
                 equipmentYear: jobData.equipment_year || storedJson.equipment_year || "",
+                customerLocation: jobData.customer_location || storedJson.customer_location || "", siteContact: jobData.site_contact || storedJson.site_contact || "", timeIn: jobData.time_in || storedJson.time_in || "", timeOut: jobData.time_out || storedJson.time_out || "", reportDate: jobData.report_date || storedJson.report_date || jobData.job_date || "", customerPoRef: jobData.customer_po_ref || storedJson.customer_po_ref || "", complaintIssueDescription: jobData.complaint_issue_description || storedJson.complaint_issue_description || "",
+                customerEquipmentId: jobData.customer_equipment_id || storedJson.customer_equipment_id || "", equipmentType: jobData.equipment_type || storedJson.equipment_type || "", meterReading: String(jobData.meter_reading ?? storedJson.meter_reading ?? ""), capacityRating: jobData.capacity_rating || storedJson.capacity_rating || "", controllerPanelModel: jobData.controller_panel_model || storedJson.controller_panel_model || "", alarmFaultCode: jobData.alarm_fault_code || storedJson.alarm_fault_code || "", lastServiceDate: jobData.last_service_date || storedJson.last_service_date || "", lastServiceHours: String(jobData.last_service_hours ?? storedJson.last_service_hours ?? ""), oilRefrigerantFuelType: jobData.oil_refrigerant_fuel_type || storedJson.oil_refrigerant_fuel_type || "", dutyCycle: jobData.duty_cycle || storedJson.duty_cycle || "", warrantyStatus: jobData.warranty_status || storedJson.warranty_status || "", warrantyClaimRef: jobData.warranty_claim_ref || storedJson.warranty_claim_ref || "", previousJobRef: jobData.previous_job_ref || storedJson.previous_job_ref || "", nameplatePhotoRef: storedJson.nameplatePhotoRef || "", vibrationReportRef: storedJson.vibrationReportRef || "",
               });
+
+              if (Array.isArray(jobData.customer_issues || storedJson.customer_issues)) setCustomerIssues(jobData.customer_issues || storedJson.customer_issues);
+              if (jobData.operating_data || storedJson.operating_data) setOperatingData(jobData.operating_data || storedJson.operating_data);
+              if (jobData.findings || storedJson.findings) setFindings({ ...findings, ...(jobData.findings || storedJson.findings) });
+              if (jobData.evidence || storedJson.evidence) {
+                const savedEvidence = jobData.evidence || storedJson.evidence;
+                setEvidence({ ...evidence, ...savedEvidence, soundFileReference: Array.isArray(savedEvidence.soundFileReference) ? savedEvidence.soundFileReference : savedEvidence.soundFileReference ? [savedEvidence.soundFileReference] : [], photosReference: Array.isArray(savedEvidence.photosReference) ? savedEvidence.photosReference : savedEvidence.photosReference ? [savedEvidence.photosReference] : [] });
+              }
 
               if (jobData.service_type) setServiceType(jobData.service_type);
               if (jobData.other_expenses) setOtherExpenses(Number(jobData.other_expenses));
@@ -238,6 +389,11 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       }));
     }
 
+    const normalizeUserOption = (item: any): UserOption => ({
+      id: Number(item?.id ?? item?.user_id ?? 0),
+      name: String(item?.name ?? item?.full_name ?? item?.username ?? item?.email ?? "Unnamed"),
+    });
+
     const fetchList = async (
       path: string,
       setItems: Dispatch<SetStateAction<UserOption[]>>,
@@ -251,9 +407,15 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         const response = await apiFetch(path);
         const data = await response.json();
         if (!response.ok) {
+          console.error(`Failed to load ${path}:`, data);
           throw new Error(data?.error?.message || data?.message || "Failed to load selection list");
         }
-        setItems(Array.isArray(data.data) ? data.data : []);
+        const rawItems = Array.isArray(data.data) ? data.data : Array.isArray(data) ? data : [];
+        const normalized = rawItems
+          .map(normalizeUserOption)
+          .filter((item) => Number.isInteger(item.id) && item.id > 0);
+        console.debug(`Loaded ${normalized.length} user options from ${path}`, normalized);
+        setItems(normalized);
       } catch (error) {
         console.error(`Failed to load ${path}:`, error);
         setItems([]);
@@ -652,6 +814,9 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
         attention_of: customerInfo.attentionOf || undefined,
         email: customerInfo.email || undefined,
         contact_no: customerInfo.contactNo || undefined,
+        customer_location: customerInfo.customerLocation || undefined, site_contact: customerInfo.siteContact || undefined, time_in: customerInfo.timeIn || undefined, time_out: customerInfo.timeOut || undefined, report_date: customerInfo.reportDate || undefined, customer_po_ref: customerInfo.customerPoRef || undefined, complaint_issue_description: customerInfo.complaintIssueDescription || undefined,
+        customer_equipment_id: customerInfo.customerEquipmentId || undefined, equipment_type: customerInfo.equipmentType || undefined, meter_reading: customerInfo.meterReading ? Number(customerInfo.meterReading) : undefined, capacity_rating: customerInfo.capacityRating || undefined, controller_panel_model: customerInfo.controllerPanelModel || undefined, alarm_fault_code: customerInfo.alarmFaultCode || undefined, last_service_date: customerInfo.lastServiceDate || undefined, last_service_hours: customerInfo.lastServiceHours ? Number(customerInfo.lastServiceHours) : undefined, oil_refrigerant_fuel_type: customerInfo.oilRefrigerantFuelType || undefined, duty_cycle: customerInfo.dutyCycle || undefined, warranty_status: customerInfo.warrantyStatus || undefined, warranty_claim_ref: customerInfo.warrantyClaimRef || undefined, previous_job_ref: customerInfo.previousJobRef || undefined,
+        customer_issues: customerIssues, operating_data: operatingData, findings, evidence,
         other_expenses: Number(otherExpenses) || 0,
         discount_percentage: Number(discountPercentage) || 0,
         manager_id: managerId ?? undefined,
@@ -665,6 +830,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           dryer_checklist: dryerChecklist || [],
           breakdown_call_type: serviceType === "breakdown_call" ? breakdownCallType : undefined,
           service_charge: computedServiceCharge,
+          customer_issues: customerIssues,
+          operating_data: operatingData,
+          findings,
+          evidence,
+          nameplatePhotoRef: customerInfo.nameplatePhotoRef,
+          vibrationReportRef: customerInfo.vibrationReportRef,
         }
       });
 
@@ -705,6 +876,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       }
 
       if (role !== 'manager') {
+        localStorage.removeItem(draftKey);
+        setDraftAvailable(false);
+        setDraftSavedAt(null);
+        setDraftRestored(false);
         toast.success("Job Card Saved Successfully and Submitted for Manager Review.");
         window.dispatchEvent(new Event('jobsUpdated'));
         return;
@@ -754,6 +929,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           setIsApproved(true);
       }
 
+      localStorage.removeItem(draftKey);
+      setDraftAvailable(false);
+      setDraftSavedAt(null);
+      setDraftRestored(false);
       toast.success("Job + Pricing saved to database ✅");
       window.dispatchEvent(new Event('jobsUpdated'));
     } catch (error) {
@@ -783,6 +962,28 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
 
   return (
     <div className="min-h-screen bg-background" onScroll={handleScroll}>
+      {draftAvailable || draftSavedAt ? (
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 pt-4">
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/95 p-4 text-sm text-slate-700 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-slate-900">Draft autosave is enabled.</p>
+              <p className="text-slate-500">
+                {draftAvailable ? `A saved draft is available from ${draftSavedAt ? new Date(draftSavedAt).toLocaleString() : 'earlier'}.` : `Last auto-saved at ${draftSavedAt ? new Date(draftSavedAt).toLocaleString() : 'just now'}.`}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {draftAvailable && (
+                <button type="button" onClick={restoreDraft} className="rounded-xl border border-blue-500 bg-blue-500/10 px-4 py-2 text-sm text-blue-700 transition hover:bg-blue-500/15">
+                  Restore Draft
+                </button>
+              )}
+              <button type="button" onClick={discardDraft} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-100">
+                Discard Draft
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {/* Animated background orbs */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="floating-orb w-[500px] h-[500px] -top-48 -right-48 opacity-[0.04]"
@@ -877,7 +1078,7 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
       </header>
 
       {/* Form Content */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6 relative">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 pb-32 space-y-6 relative">
         <motion.div custom={0} variants={sectionVariants} initial="hidden" animate="visible">
           <CustomerInfoSection
             data={customerInfo}
@@ -920,6 +1121,13 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           />
         </motion.div>
 
+        <Section title="Customer Raised Issues">
+          <div className="space-y-4">{customerIssues.map((issue, index) => <div key={index} className="rounded-xl border p-3 space-y-3">
+            <div className="flex items-center justify-between"><strong className="text-sm">Issue {index + 1}</strong>{customerIssues.length > 1 && <Button type="button" variant="ghost" size="icon" onClick={() => setCustomerIssues(customerIssues.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><Field label="Issue description"><Input className={inputClass} value={issue.description} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, description: e.target.value } : x))} /></Field><Field label="Observed Symptom"><Input className={inputClass} value={issue.symptom} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, symptom: e.target.value } : x))} /></Field><Field label="When does fault occur"><Input className={inputClass} value={issue.occurrence} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, occurrence: e.target.value } : x))} /></Field><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={issue.repeatFailure} onChange={(e) => setCustomerIssues(customerIssues.map((x, i) => i === index ? { ...x, repeatFailure: e.target.checked } : x))} /> Repeat Failure: Yes</label></div>
+          </div>)}{customerIssues.length < 3 && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={() => setCustomerIssues([...customerIssues, emptyIssue()])}><Plus className="h-4 w-4" /> Add Issue</Button>}</div>
+        </Section>
+
         <motion.div custom={2} variants={sectionVariants} initial="hidden" animate="visible">
           <ChecklistSection
             title="Screw Air Compressor Checklist"
@@ -937,6 +1145,10 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
             delay={0.2}
           />
         </motion.div>
+
+        <Section title="Job Findings & Diagnosis"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><Field label="As Found Condition / Complaint"><Textarea value={findings.asFoundCondition} onChange={(e) => setFindings({ ...findings, asFoundCondition: e.target.value })} /></Field><Field label="Root Cause / Diagnosis"><Textarea value={findings.rootCauseDiagnosis} onChange={(e) => setFindings({ ...findings, rootCauseDiagnosis: e.target.value })} /></Field><Field label="As Left Condition"><Textarea value={findings.asLeftCondition} onChange={(e) => setFindings({ ...findings, asLeftCondition: e.target.value })} /></Field><Field label="Safety / Permit Ref — LOTO or Hot Work Permit No."><Input className={inputClass} value={findings.safetyPermitRef} onChange={(e) => setFindings({ ...findings, safetyPermitRef: e.target.value })} /></Field><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={findings.nextVisitRequired} onChange={(e) => setFindings({ ...findings, nextVisitRequired: e.target.checked })} /> Next Visit Required: Yes</label>{findings.nextVisitRequired && <Field label="Next Visit Notes"><Textarea placeholder="Notes for the next visit" value={findings.nextVisitNotes} onChange={(e) => setFindings({ ...findings, nextVisitNotes: e.target.value })} /></Field>}</div></Section>
+
+        <Section title="Operating Data"><div className="space-y-3">{["Running Hours", "Load Hours / Duty Cycle", "Discharge Pressure", "Discharge Temperature", "Voltage L1 / L2 / L3", "Current L1 / L2 / L3"].map((parameter) => { const row = operatingData[parameter] || { before: "", after: "", unit: "", remarks: "" }; const setRow = (key: keyof typeof row, value: string) => setOperatingData({ ...operatingData, [parameter]: { ...row, [key]: value } }); return <div key={parameter} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 rounded-lg border p-3"><strong className="text-sm lg:col-span-1">{parameter}</strong><Input className={inputClass} type="number" inputMode="decimal" min={0} step={0.01} placeholder="Before" value={row.before} onChange={(e) => setRow("before", e.target.value)} /><Input className={inputClass} type="number" inputMode="decimal" min={0} step={0.01} placeholder="After" value={row.after} onChange={(e) => setRow("after", e.target.value)} /><Input className={inputClass} placeholder="Unit / N/A" value={row.unit} onChange={(e) => setRow("unit", e.target.value)} /><Input className={inputClass} placeholder="Remarks" value={row.remarks} onChange={(e) => setRow("remarks", e.target.value)} /></div>; })}</div></Section>
 
         <motion.div custom={4} variants={sectionVariants} initial="hidden" animate="visible">
           <PartsLaborSection
@@ -966,6 +1178,12 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
             />
           </motion.div>
         )}
+
+        <Section title="Mandatory Evidence & Job Closure"><div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><FileUploadField label="Sound File" accept="audio/*" value={evidence.soundFileReference} onChange={(files) => setEvidence({ ...evidence, soundFileReference: files })} /><Field label="dB Reading"><Input className={inputClass} type="number" inputMode="numeric" min={0} step={1} value={evidence.dbReading} onChange={(e) => setEvidence({ ...evidence, dbReading: e.target.value })} /></Field><FileUploadField label={`Before, After & Nameplate Photos (Mandatory) — ${evidence.photosReference.length} photos uploaded`} accept="image/*" multiple value={evidence.photosReference} onChange={(files) => setEvidence({ ...evidence, photosReference: files })} /><Field label="Parts Replaced"><Textarea value={evidence.partsReplaced} onChange={(e) => setEvidence({ ...evidence, partsReplaced: e.target.value })} /></Field><Field label="Final Test Run result"><Select value={evidence.finalTestResult} onValueChange={(v) => setEvidence({ ...evidence, finalTestResult: v })}><SelectTrigger className={inputClass}><SelectValue placeholder="Select result" /></SelectTrigger><SelectContent>{["Pass", "Fail", "Temporary Fix", "N/A"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="Final Equipment Status"><Select value={evidence.finalEquipmentStatus} onValueChange={(v) => setEvidence({ ...evidence, finalEquipmentStatus: v })}><SelectTrigger className={inputClass}><SelectValue placeholder="Select status" /></SelectTrigger><SelectContent>{["Fully Operational", "Temporarily Operational", "Stopped", "Pending Parts", "Further Diagnosis Required"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.quotationRequired} onChange={(e) => setEvidence({ ...evidence, quotationRequired: e.target.checked })} /> Quotation Required: Yes</label><label className="flex min-h-11 items-center gap-2"><input type="checkbox" className="h-5 w-5" checked={evidence.safetyCriticalIssue} onChange={(e) => setEvidence({ ...evidence, safetyCriticalIssue: e.target.checked })} /> Safety Critical Issue Found: Yes</label>{evidence.safetyCriticalIssue && <Field label="Escalated To / Time"><Input className={inputClass} value={evidence.escalatedToTime} onChange={(e) => setEvidence({ ...evidence, escalatedToTime: e.target.value })} /></Field>}</div><div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">{([["internalChecklistCompleted", "Internal checklist completed"], ["mandatoryAttachmentsVerified", "Mandatory attachments verified"], ["jobReadyForInvoicing", "Job ready for invoicing"]] as const).map(([key, label]) => <label key={key} className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" className="h-5 w-5" checked={evidence[key]} onChange={(e) => setEvidence({ ...evidence, [key]: e.target.checked })} /> {label}</label>)}</div></Section>
+
+        <div className="section-card -mt-4">
+          <FileUploadField label="Alarm / Fault Code Photo" accept="image/*" value={evidence.alarmFaultPhotoReference ? [evidence.alarmFaultPhotoReference] : []} onChange={(files) => setEvidence({ ...evidence, alarmFaultPhotoReference: files[0] || "" })} />
+        </div>
 
         {/* Bottom Actions */}
         <motion.div
@@ -1047,6 +1265,18 @@ const JobCardForm = ({ role = 'engineer', jobId, onClose }: JobCardFormProps) =>
           </div>
         </motion.div>
       </main>
+
+      {isMobileForm && (
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200/80 bg-background/95 backdrop-blur-xl px-4 py-3 sm:hidden">
+          <Button
+            onClick={handleSaveJob}
+            size="lg"
+            className="w-full rounded-2xl bg-green-600 text-white hover:bg-green-700 border-0"
+          >
+            {role === 'manager' ? (isApproved ? 'Save Pricing' : 'Save & Approve Job') : 'Save to Database'}
+          </Button>
+        </div>
+      )}
 
       {/* Scroll to top button */}
       <AnimatePresence>

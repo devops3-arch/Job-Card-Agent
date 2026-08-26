@@ -2,14 +2,13 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import DashboardContent from "@/components/DashboardContent";
 import JobCardForm from "@/components/jobcard/JobCardForm";
-import UserManagement from "@/components/UserManagement";
 import ProfileSettings from "@/components/ProfileSettings";
 import ManagerPortal from "@/components/ManagerPortal";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu } from "lucide-react";
 
 const Index = () => {
-    const [currentRole, setCurrentRole] = useState<'engineer' | 'manager' | 'users' | 'dashboard' | 'profile'>('dashboard');
+    const [currentRole, setCurrentRole] = useState<'engineer' | 'manager' | 'dashboard' | 'profile'>('dashboard');
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [managerEditJobId, setManagerEditJobId] = useState<number | null>(null);
     
@@ -27,10 +26,10 @@ const Index = () => {
         return () => window.removeEventListener('openEditJob', handler);
     }, []);
 
-    const handleRoleChange = (role: 'engineer' | 'manager' | 'users' | 'dashboard' | 'profile') => {
+    const handleRoleChange = (role: 'engineer' | 'manager' | 'dashboard' | 'profile') => {
         // Enforce role-based navigation
-        if (userRole === 'engineer' && (role === 'manager' || role === 'users')) {
-            return; // Prevent engineers from accessing manager and users tabs
+        if (userRole === 'engineer' && role === 'manager') {
+            return; // Prevent engineers from accessing manager tabs
         }
         setCurrentRole(role);
         setManagerEditJobId(null);
@@ -43,7 +42,7 @@ const Index = () => {
 
             <div className="flex-1 flex flex-col h-screen overflow-hidden">
                 <div className="md:hidden flex items-center justify-between p-4 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 z-40 relative">
-                    <h1 className="text-lg font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-600">JobFlow Pro</h1>
+                    <h1 className="text-lg font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-slate-800 to-slate-600">Job Card</h1>
                     <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                         <SheetTrigger asChild>
                             <button className="p-2 bg-slate-100 rounded-lg text-slate-600 hover:bg-slate-200 transition-colors">
@@ -86,10 +85,6 @@ const Index = () => {
                                 </button>
                             </div>
                             <JobCardForm />
-                        </div>
-                    ) : currentRole === 'users' ? (
-                        <div className="max-w-[1400px] mx-auto space-y-6">
-                            <UserManagement />
                         </div>
                     ) : currentRole === 'profile' ? (
                         <ProfileSettings />
