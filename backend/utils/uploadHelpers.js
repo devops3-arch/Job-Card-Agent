@@ -6,6 +6,7 @@
 
 import crypto from 'crypto';
 import path from 'path';
+import { fileTypeFromBuffer } from 'file-type';
 import logger from '../services/logger/logger.js';
 
 /**
@@ -223,6 +224,52 @@ export function getAzureBlobPath(fileType, filename) {
  */
 export function calculateFileHash(fileBuffer) {
   return crypto.createHash('sha256').update(fileBuffer).digest('hex');
+}
+
+export async function validateUploadedFileContent(buffer, uploadKind, claimedMimeType = '', originalName = '') {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    return { valid: false, error: 'Uploaded file is empty' };
+  }
+
+  const detected = await fileTypeFromBuffer(buffer);
+  if (!detected?.mime) {
+    return { valid: false, error: 'Uploaded file content could not be recognized' };
+  }
+
+  const detectedMime = detected.mime.toLowerCase();
+  const normalizedMime = (claimedMimeType || '').toLowerCase();
+  const extension = path.extname(originalName || '').toLowerCase();
+
+  const allowedMimesByKind = {
+    photo: ['image/jpeg', 'image/png', 'image/webp'],
+    sound: ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/x-m4a'],
+    signature: ['image/jpeg', 'image/png', 'image/webp'],
+    document: ['application/pdf'],
+  };
+
+  const allowedExtensionsByKind = {
+    photo: ['.jpg', '.jpeg', '.png', '.webp'],
+    sound: ['.mp3', '.wav', '.m4a'],
+    signature: ['.jpg', '.jpeg', '.png', '.webp'],
+    document: ['.pdf'],
+  };
+
+  const allowedMimes = allowedMimesByKind[uploadKind] || [];
+  const allowedExtensions = allowedExtensionsByKind[uploadKind] || [];
+
+  if (allowedMimes.length && !allowedMimes.includes(detectedMime)) {
+    return { valid: false, error: 'Uploaded file content does not match the allowed file type' };
+  }
+
+  if (normalizedMime && allowedMimes.length && !allowedMimes.includes(normalizedMime)) {
+    return { valid: false, error: 'Claimed MIME type is not allowed for this upload' };
+  }
+
+  if (allowedExtensions.length && !allowedExtensions.includes(extension)) {
+    return { valid: false, error: 'Uploaded file extension does not match the allowed file types' };
+  }
+
+  return { valid: true };
 }
 
 export default {

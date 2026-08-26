@@ -131,8 +131,11 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
 
   try {
     const jobResult = await useClient.query(
-      `SELECT id, customer_name, job_card_no, job_date, ref_no, sales_area, service_type, email,
-              contact_no, engineer_id, manager_id, compressor_checklist, dryer_checklist, job_data
+            `SELECT id, customer_name, job_card_no, job_date, ref_no, sales_area, service_type, email,
+              contact_no, engineer_id, manager_id, report_date, customer_location, warranty_status,
+              compressor_checklist, dryer_checklist, job_data,
+              safety_critical_issue, escalated_to, quotation_required, final_test_run_result, final_equipment_status,
+              internal_checklist_completed, attachments_verified
        FROM job_master
        WHERE id = $1`,
       [jobId]
@@ -251,6 +254,44 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
       }
     }
 
+      // New format validation — advisory only, does not block approval
+      // TODO: set to blocking after full rollout
+      const advisory = [];
+      try {
+        if (job.safety_critical_issue === true && (!job.escalated_to || String(job.escalated_to).trim() === "")) {
+          advisory.push({ field: "escalated_to", message: "Safety critical issue found but escalation details are missing" });
+        }
+
+        if (job.quotation_required === true) {
+          const approvedDocRes = await useClient.query(
+            `SELECT id FROM approved_documents WHERE job_id = $1 ORDER BY version DESC LIMIT 1`,
+            [jobId]
+          );
+          if (approvedDocRes.rows.length === 0) {
+            advisory.push({ field: "approved_documents", message: "Quotation is required but no approved document found" });
+          }
+        }
+
+        if (!job.final_test_run_result) {
+          advisory.push({ field: "final_test_run_result", message: "Final test run result must be recorded before approval" });
+        }
+
+        if (!job.final_equipment_status) {
+          advisory.push({ field: "final_equipment_status", message: "Final equipment status must be recorded before approval" });
+        }
+
+        if (job.internal_checklist_completed !== true) {
+          advisory.push({ field: "internal_checklist_completed", message: "Internal checklist must be marked as completed before approval" });
+        }
+
+        if (job.attachments_verified !== true) {
+          advisory.push({ field: "attachments_verified", message: "Mandatory attachments (photos, sound file, checklist) must be verified before approval" });
+        }
+      } catch (err) {
+        // Non-fatal advisory check failure
+        console.warn("Advisory approval checks failed:", err?.message || err);
+      }
+
     if (details.length > 0) {
       return {
         success: false,
@@ -260,6 +301,11 @@ export const validateJobReadyForApproval = async ({ jobId, client = null, approv
           details,
         },
       };
+    }
+
+    // Return advisory warnings along with success so callers can surface warnings
+    if (advisory.length > 0) {
+      return { success: true, advisory };
     }
 
     return { success: true };

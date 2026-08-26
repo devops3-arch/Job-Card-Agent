@@ -1,4 +1,5 @@
 -- Migration 001: Create audit_logs table and indexes
+-- Audit log is append-only by design — no update/delete routes should ever be added here.
 CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER,

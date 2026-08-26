@@ -104,6 +104,23 @@ export const requireRole = (...allowedRoles) => {
   };
 };
 
+export const requireAdmin = (req, res, next) => {
+  if (!req.user) {
+    throw new AppError("Authentication required", 401, "AUTH_REQUIRED");
+  }
+
+  if (req.user.role !== "admin") {
+    logAuditEvent(req, "Unauthorized Admin Access Attempt", "auth", null, {
+      role: req.user.role,
+      endpoint: req.originalUrl,
+      method: req.method,
+    });
+    throw new AppError("Admin access required", 403, "FORBIDDEN");
+  }
+
+  next();
+};
+
 export const requireDevOrAdmin = (req, res, next) => {
   if (process.env.NODE_ENV !== "production") {
     return next();

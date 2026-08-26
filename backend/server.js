@@ -11,9 +11,9 @@ import errorHandler from "./middleware/errorHandler.js";
 import { logAuditEvent } from "./audit.js";
 import { validate } from "./middleware/validate.js";
 import { globalLimiter, authLimiter } from "./middleware/rateLimiters.js";
-import { signatureUpload, documentUpload, saveUploadedFile, deleteUploadedFile } from "./middleware/upload.js";
+import { signatureUpload, documentUpload, reportUpload, saveUploadedFile, deleteUploadedFile } from "./middleware/upload.js";
 import { generateSecureFilename } from "./utils/uploadHelpers.js";
-import { generateToken, requireAuth, requireRole, requireDevOrAdmin } from "./middleware/auth.js";
+import { generateToken, requireAuth, requireRole, requireAdmin, requireDevOrAdmin } from "./middleware/auth.js";
 import * as tokenService from "./services/tokenService.js";
 import * as eventService from "./services/eventService.js";
 import * as signatureService from "./services/signatureService.js";
@@ -44,6 +44,9 @@ import {
   statusUpdateSchema,
   deleteJobSchema,
   userCreationSchema,
+  adminCreateUserSchema,
+  adminUpdateUserSchema,
+  adminSetPasswordSchema,
   signatureUploadSchema,
   pdfGenerationSchema,
   aiDescriptionSchema,
@@ -100,8 +103,21 @@ app.use(
     },
   })
 );
+const configuredFrontendOrigins = (process.env.FRONTEND_URL || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const isAllowedDevelopmentOrigin = (origin) =>
+  /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):\d+$/.test(origin);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:8080",
+  origin: (origin, callback) => {
+    // Browsers omit Origin for same-origin/server-to-server requests.
+    if (!origin || configuredFrontendOrigins.includes(origin) || isAllowedDevelopmentOrigin(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS origin not allowed: ${origin}`));
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: "2mb" }));
@@ -114,6 +130,33 @@ app.use(globalLimiter);
 
 // FIX 1: Use __dirname-relative path for uploads so Azure resolves it correctly
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+app.post("/api/uploads", requireAuth, (req, res, next) => {
+  reportUpload(req, res, async (uploadError) => {
+    if (uploadError) return next(new AppError(uploadError.message, 400, "UPLOAD_ERROR"));
+    try {
+      const kind = String(req.body?.kind || "photo").toLowerCase();
+      const files = Array.isArray(req.files) ? req.files : [];
+      if (!files.length) return next(new AppError("At least one file is required", 400, "UPLOAD_EMPTY"));
+      if (kind === "sound" && files.length !== 1) return next(new AppError("Only one sound file may be uploaded", 400, "UPLOAD_INVALID_COUNT"));
+      if (!["photo", "sound"].includes(kind)) return next(new AppError("Upload kind must be photo or sound", 400, "UPLOAD_INVALID_KIND"));
+      for (const file of files) {
+        const isPhoto = file.mimetype.startsWith("image/");
+        const isSound = file.mimetype.startsWith("audio/");
+        if ((kind === "photo" && !isPhoto) || (kind === "sound" && !isSound)) return next(new AppError(`Invalid ${kind} file type`, 400, "UPLOAD_INVALID_TYPE"));
+        if (kind === "photo" && file.size > 10 * 1024 * 1024) return next(new AppError("Photo files must be 10MB or smaller", 400, "UPLOAD_TOO_LARGE"));
+      }
+      const saved = files.map((file) => saveUploadedFile(file, req.user.id, "report"));
+      const failed = saved.find((file) => file.error);
+      if (failed) return next(new AppError(failed.error, 500, "UPLOAD_SAVE_FAILED"));
+      const host = `${req.protocol}://${req.get("host")}`;
+      const first = saved[0];
+      return res.status(201).json({ success: true, fileUrl: `${host}${first.url}`, fileName: first.filename, files: saved.map((file) => ({ fileUrl: `${host}${file.url}`, fileName: file.filename })) });
+    } catch (error) {
+      return next(error);
+    }
+  });
+});
 
 // ─── Swagger UI ──────────────────────────────────────────────────────────────
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
@@ -255,24 +298,243 @@ app.get("/health", async (req, res) => {
   });
 });
 
+const getUserRoleList = (role) => asyncHandler(async (_req, res) => {
+  const result = await pool.query(
+    "SELECT id, name FROM users WHERE role = $1 ORDER BY name",
+    [role]
+  );
+  return sendSuccess(res, result.rows ?? []);
+});
+
 app.get(
   "/users/managers",
   requireAuth,
-  asyncHandler(async (_req, res) => {
-    const result = await pool.query(
-      "SELECT id, name FROM users WHERE role = 'manager' ORDER BY name"
-    );
-    return sendSuccess(res, result.rows ?? []);
-  })
+  getUserRoleList("manager")
+);
+app.get(
+  "/api/users/managers",
+  requireAuth,
+  getUserRoleList("manager")
 );
 
 app.get(
   "/users/engineers",
   requireAuth,
-  asyncHandler(async (_req, res) => {
+  getUserRoleList("engineer")
+);
+app.get(
+  "/api/users/engineers",
+  requireAuth,
+  getUserRoleList("engineer")
+);
+
+app.get(
+  "/api/admin/users",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const query = String(req.query.q || "").trim();
+    const values = [];
+    let whereClause = "";
+
+    if (query) {
+      whereClause = "WHERE (name ILIKE $1 OR email ILIKE $1)";
+      values.push(`%${query}%`);
+    }
+
     const result = await pool.query(
-      "SELECT id, name FROM users WHERE role = 'engineer' ORDER BY name"
+      `SELECT id, name AS full_name, email, role, is_active FROM users ${whereClause} ORDER BY name ASC`,
+      values
     );
+    return sendSuccess(res, result.rows ?? []);
+  })
+);
+
+app.post(
+  "/api/admin/users",
+  requireAuth,
+  requireAdmin,
+  validate({ body: adminCreateUserSchema }),
+  asyncHandler(async (req, res) => {
+    const { name, email, password, role } = req.body;
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const existing = await pool.query("SELECT id FROM users WHERE LOWER(email) = $1", [normalizedEmail]);
+    if (existing.rows.length > 0) {
+      throw new AppError("A user with that email already exists", 409, "EMAIL_ALREADY_EXISTS");
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const result = await pool.query(
+      `INSERT INTO users (name, email, password_hash, role, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       RETURNING id, name AS full_name, email, role, is_active`,
+      [name.trim(), normalizedEmail, passwordHash, role]
+    );
+
+    const newUser = result.rows[0];
+    await logAuditEvent(req, "User Created", "user", newUser.id, null, {
+      id: newUser.id,
+      name: newUser.full_name,
+      email: newUser.email,
+      role: newUser.role,
+      is_active: newUser.is_active,
+    });
+    return sendSuccess(res, newUser, "Admin user created successfully");
+  })
+);
+
+app.put(
+  "/api/admin/users/:id",
+  requireAuth,
+  requireAdmin,
+  validate({ params: idParamSchema, body: adminUpdateUserSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.id);
+    const { name, email, role } = req.body;
+
+    const existingUser = await pool.query("SELECT id, name, email, role FROM users WHERE id = $1", [userId]);
+    if (existingUser.rows.length === 0) {
+      throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+
+    if (email) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const duplicateCheck = await pool.query(
+        "SELECT id FROM users WHERE LOWER(email) = $1 AND id <> $2",
+        [normalizedEmail, userId]
+      );
+      if (duplicateCheck.rows.length > 0) {
+        throw new AppError("A user with that email already exists", 409, "EMAIL_ALREADY_EXISTS");
+      }
+    }
+
+    const updates = [];
+    const values = [];
+    let index = 1;
+
+    if (name) {
+      updates.push(`name = $${index++}`);
+      values.push(name.trim());
+    }
+    if (email) {
+      updates.push(`email = $${index++}`);
+      values.push(String(email).trim().toLowerCase());
+    }
+    if (role) {
+      updates.push(`role = $${index++}`);
+      values.push(role);
+    }
+
+    if (updates.length === 0) {
+      throw new AppError("No changes were provided", 400, "NO_UPDATE_FIELDS");
+    }
+
+    values.push(userId);
+    const result = await pool.query(
+      `UPDATE users SET ${updates.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = $${index} RETURNING id, name AS full_name, email, role, is_active`,
+      values
+    );
+
+    const updatedUser = result.rows[0];
+    await logAuditEvent(req, "User Updated", "user", userId, {
+      id: existingUser.rows[0].id,
+      name: existingUser.rows[0].name,
+      email: existingUser.rows[0].email,
+      role: existingUser.rows[0].role,
+    }, {
+      name: updatedUser.full_name,
+      email: updatedUser.email,
+      role: updatedUser.role,
+    });
+
+    return sendSuccess(res, updatedUser, "User profile updated successfully");
+  })
+);
+
+app.put(
+  "/api/admin/users/:id/password",
+  requireAuth,
+  requireAdmin,
+  validate({ params: idParamSchema, body: adminSetPasswordSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.id);
+    const { newPassword } = req.body;
+
+    const existingUser = await pool.query("SELECT id FROM users WHERE id = $1", [userId]);
+    if (existingUser.rows.length === 0) {
+      throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const result = await pool.query(
+      `UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name AS full_name, email, role, is_active`,
+      [passwordHash, userId]
+    );
+
+    await logAuditEvent(req, "User Password Reset", "user", userId, null, null);
+    return sendSuccess(res, result.rows[0], "Password updated successfully");
+  })
+);
+
+app.put(
+  "/api/admin/users/:id/toggle-active",
+  requireAuth,
+  requireAdmin,
+  validate({ params: idParamSchema }),
+  asyncHandler(async (req, res) => {
+    const userId = Number(req.params.id);
+    const existingUser = await pool.query("SELECT id, is_active FROM users WHERE id = $1", [userId]);
+    if (existingUser.rows.length === 0) {
+      throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    }
+
+    const newActive = !existingUser.rows[0].is_active;
+    const result = await pool.query(
+      `UPDATE users SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name AS full_name, email, role, is_active`,
+      [newActive, userId]
+    );
+
+    const updatedUser = result.rows[0];
+    await logAuditEvent(req, "User Status Changed", "user", userId, { is_active: existingUser.rows[0].is_active }, { is_active: newActive });
+    return sendSuccess(res, updatedUser, newActive ? "User activated" : "User deactivated");
+  })
+);
+
+app.get(
+  "/api/admin/audit-log",
+  requireAuth,
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const limit = Math.min(100, Math.max(1, toNum(req.query.limit, 50)));
+    const offset = Math.max(0, toNum(req.query.offset, 0));
+    const actionType = typeof req.query.action_type === "string" && req.query.action_type.trim() ? req.query.action_type.trim() : null;
+    const entityType = typeof req.query.entity_type === "string" && req.query.entity_type.trim() ? req.query.entity_type.trim() : null;
+
+    const filters = [];
+    const values = [];
+    if (actionType) {
+      values.push(actionType);
+      filters.push(`action_type = $${values.length}`);
+    }
+    if (entityType) {
+      values.push(entityType);
+      filters.push(`entity_type = $${values.length}`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    values.push(limit, offset);
+
+    const result = await pool.query(
+      `SELECT id, user_id, user_name, user_role, action_type, entity_type, entity_id, old_values, new_values, endpoint, method, ip_address, created_at
+       FROM audit_logs
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${values.length - 1}
+       OFFSET $${values.length}`,
+      values
+    );
+
     return sendSuccess(res, result.rows ?? []);
   })
 );
@@ -334,6 +596,62 @@ app.get(
     } catch (err) {
       return sendError(res, 503, "Database connectivity failed", "DATABASE_UNAVAILABLE", { error: err.message });
     }
+  })
+);
+
+// Search customer master data. Deployments that have a dedicated customers table
+// use it; older installations safely fall back to active users.
+app.get(["/customers/search", "/api/customers/search"], requireAuth, asyncHandler(async (req, res) => {
+  const query = String(req.query.q || "").trim();
+  if (query.length < 2) return res.json([]);
+  try {
+    const result = await pool.query(
+      `SELECT id, name, code, email, contact FROM customers
+       WHERE active IS NOT FALSE AND (name ILIKE $1 OR code ILIKE $1)
+       ORDER BY name LIMIT 25`, [`%${query}%`]
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    if (error.code !== "42P01") throw error;
+    const result = await pool.query(
+      `SELECT id, name, NULL::text AS code, email, NULL::text AS contact FROM users
+       WHERE is_active IS NOT FALSE AND name ILIKE $1 ORDER BY name LIMIT 25`, [`%${query}%`]
+    );
+    return res.json(result.rows);
+  }
+}));
+
+app.get(["/brands", "/api/brands"], requireAuth, asyncHandler(async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (q) {
+    const result = await pool.query(
+      `SELECT id, name FROM brands WHERE active = TRUE AND name ILIKE $1 ORDER BY name ASC`,
+      [`%${q}%`]
+    );
+    return res.json(result.rows);
+  }
+  const result = await pool.query("SELECT id, name FROM brands WHERE active = TRUE ORDER BY name ASC");
+  return res.json(result.rows);
+}));
+
+// Add brand (manager/admin only)
+app.post(
+  "/api/brands",
+  requireAuth,
+  requireRole("manager", "admin"),
+  asyncHandler(async (req, res) => {
+    const name = String(req.body?.name || "").trim();
+    if (!name) {
+      return sendError(res, 400, "Brand name is required", "BRAND_NAME_REQUIRED");
+    }
+    if (name.length > 100) {
+      return sendError(res, 400, "Brand name must be 100 characters or fewer", "BRAND_NAME_TOO_LONG");
+    }
+    const result = await pool.query(
+      `INSERT INTO brands (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET active = TRUE RETURNING *`,
+      [name]
+    );
+    return sendSuccess(res, { brand: result.rows[0] });
   })
 );
 
@@ -655,6 +973,31 @@ app.post(
             "parts",
             "labor",
             "job_data",
+            // New format fields included directly in INSERT
+            "customer_location",
+            "site_contact",
+            "time_in",
+            "time_out",
+            "report_date",
+            "customer_po_ref",
+            "complaint_issue_description",
+            "customer_equipment_id",
+            "equipment_type",
+            "meter_reading",
+            "capacity_rating",
+            "controller_panel_model",
+            "alarm_fault_code",
+            "last_service_date",
+            "last_service_hours",
+            "oil_refrigerant_fuel_type",
+            "duty_cycle",
+            "warranty_status",
+            "warranty_claim_ref",
+            "previous_job_ref",
+            "customer_issues",
+            "findings",
+            "operating_data",
+            "evidence",
             "status",
             "engineer_id",
             "manager_id"
@@ -683,13 +1026,37 @@ app.post(
             JSON.stringify(safeParts),
             JSON.stringify(safeLabor),
             JSON.stringify(safeJobData),
+            // new format values
+            req.body.customer_location ?? safeJobData.customer_location ?? null,
+            req.body.site_contact ?? safeJobData.site_contact ?? null,
+            req.body.time_in ?? safeJobData.time_in ?? null,
+            req.body.time_out ?? safeJobData.time_out ?? null,
+            req.body.report_date ?? safeJobData.report_date ?? null,
+            req.body.customer_po_ref ?? safeJobData.customer_po_ref ?? null,
+            req.body.complaint_issue_description ?? safeJobData.complaint_issue_description ?? null,
+            req.body.customer_equipment_id ?? safeJobData.customer_equipment_id ?? null,
+            req.body.equipment_type ?? safeJobData.equipment_type ?? null,
+            req.body.meter_reading ?? safeJobData.meter_reading ?? null,
+            req.body.capacity_rating ?? safeJobData.capacity_rating ?? null,
+            req.body.controller_panel_model ?? safeJobData.controller_panel_model ?? null,
+            req.body.alarm_fault_code ?? safeJobData.alarm_fault_code ?? null,
+            req.body.last_service_date ?? safeJobData.last_service_date ?? null,
+            req.body.last_service_hours ?? safeJobData.last_service_hours ?? null,
+            req.body.oil_refrigerant_fuel_type ?? safeJobData.oil_refrigerant_fuel_type ?? null,
+            req.body.duty_cycle ?? safeJobData.duty_cycle ?? null,
+            req.body.warranty_status ?? safeJobData.warranty_status ?? null,
+            req.body.warranty_claim_ref ?? safeJobData.warranty_claim_ref ?? null,
+            req.body.previous_job_ref ?? safeJobData.previous_job_ref ?? null,
+            JSON.stringify(req.body.customer_issues ?? safeJobData.customer_issues ?? []),
+            JSON.stringify(req.body.findings ?? safeJobData.findings ?? {}),
+            JSON.stringify(req.body.operating_data ?? safeJobData.operating_data ?? {}),
+            JSON.stringify(req.body.evidence ?? safeJobData.evidence ?? {}),
             initialStatus,
             userId,
             manager_id
         ];
-        
 
-        const jsonbColumns = new Set(["parts", "labor", "job_data"]);
+        const jsonbColumns = new Set(["parts", "labor", "job_data", "customer_issues", "findings", "operating_data", "evidence"]);
 
         const placeholders = columns
           .map((column, index) => {
@@ -981,6 +1348,10 @@ app.get(
                 attention_of,
                 email,
                 contact_no,
+                customer_location, site_contact, time_in, time_out, report_date, customer_po_ref, complaint_issue_description,
+                customer_equipment_id, equipment_type, meter_reading, capacity_rating, controller_panel_model, alarm_fault_code,
+                last_service_date, last_service_hours, oil_refrigerant_fuel_type, duty_cycle, warranty_status, warranty_claim_ref, previous_job_ref,
+                customer_issues, operating_data, findings, evidence,
                 sales_area,
                 service_type,
                 under_warranty,
@@ -1221,15 +1592,62 @@ app.put(
       "attention_of",
       "email",
       "contact_no",
+      // new format fields
+      "customer_location",
+      "site_contact",
+      "time_in",
+      "time_out",
+      "report_date",
+      "customer_po_ref",
+      "complaint_issue_description",
+      "customer_equipment_id",
+      "equipment_type",
+      "meter_reading",
+      "capacity_rating",
+      "controller_panel_model",
+      "alarm_fault_code",
+      "last_service_date",
+      "last_service_hours",
+      "oil_refrigerant_fuel_type",
+      "duty_cycle",
+      "warranty_status",
+      "warranty_claim_ref",
+      "previous_job_ref",
+      "customer_issues",
+      "operating_data",
+      "findings",
+      "evidence",
+      "total_travel_hours",
+      "total_work_hours",
+      "no_of_visits_current",
+      "no_of_visits_total",
+      "charge_per_visit",
+      "next_visit_required",
+      "next_visit_notes",
+      "final_test_run_result",
+      "final_equipment_status",
+      "quotation_required",
+      "safety_critical_issue",
+      "escalated_to",
+      "internal_checklist_completed",
+      "attachments_verified",
+      "job_ready_for_invoicing",
+      "brand_id",
+      "photos_qty",
+      "sound_file_url",
+      "alarm_fault_photo_url",
+      "vibration_report_url",
       "other_expenses",
       "discount_percentage",
       "job_data",
     ];
 
+    const jsonbUpdateFields = new Set(["job_data", "customer_issues", "operating_data", "findings", "evidence"]);
     for (const field of allowedUpdateFields) {
       if (field in req.body) {
-        updates.push(`${field} = $${index}`);
-        const fieldValue = field === "job_data" ? req.body[field] : req.body[field];
+        const isJsonb = jsonbUpdateFields.has(field);
+        updates.push(`${field} = $${index}${isJsonb ? '::jsonb' : ''}`);
+        const fieldValue = isJsonb ? JSON.stringify(req.body[field]) : req.body[field];
         values.push(fieldValue);
         index += 1;
       }

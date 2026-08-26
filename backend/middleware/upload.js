@@ -14,6 +14,7 @@ import {
   sanitizeFilename,
   validateSignatureFile,
   validateDocumentFile,
+  validateUploadedFileContent,
   getUploadPath,
 } from '../utils/uploadHelpers.js';
 
@@ -90,6 +91,17 @@ export const documentUpload = multer({
   },
 }).single('document');
 
+/** Field-service evidence uploads. The route applies the 10MB photo limit
+ * and the 20MB audio limit after multer has parsed the multipart request. */
+export const reportUpload = multer({
+  storage: memoryStorage,
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/')) return cb(null, true);
+    return cb(new Error('Only image and audio files are allowed for report evidence'));
+  },
+}).array('files', 20);
+
 /**
  * Save uploaded file to disk
  * Generates secure filename and stores in appropriate directory
@@ -99,12 +111,16 @@ export const documentUpload = multer({
  * @param {string} fileType - 'signature' or 'document'
  * @returns {object} { filename, filepath, url, error? }
  */
-export function saveUploadedFile(file, userId, fileType) {
+export async function saveUploadedFile(file, userId, fileType, uploadKind = null) {
   if (!file) {
     return { error: 'No file provided' };
   }
 
   try {
+    const contentValidation = await validateUploadedFileContent(file.buffer, uploadKind || fileType, file.mimetype, file.originalname);
+    if (!contentValidation.valid) {
+      return { error: contentValidation.error };
+    }
     // Generate secure filename
     const filename = generateSecureFilename(userId, fileType, file.originalname);
 
@@ -201,6 +217,7 @@ export function uploadFileExists(filepath) {
 export default {
   signatureUpload,
   documentUpload,
+  reportUpload,
   saveUploadedFile,
   deleteUploadedFile,
   uploadFileExists,
